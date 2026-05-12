@@ -254,17 +254,7 @@ Funcionalitats addicionals:
 Comandes:
 
 ```bash
-# Mode estàndard (sortida llegible)
 pixi run python src/eval.py puzzles/sample3.json
-
-# Indicant graf explícit
-pixi run python src/eval.py puzzles/sample3.json puzzles/sample3.graphml
-
-# Sortida en JSON
-pixi run python src/eval.py puzzles/sample3.json --json
-
-# Incloure betweenness (més lent)
-pixi run python src/eval.py puzzles/sample3.json --with-betweenness
 ```
 
 ### Pas 5 - rate.py
@@ -273,9 +263,8 @@ Cinquè script implementat. Envia una valoració (estrelles) d'un puzzle al repo
 
 Funcionalitat principal:
 1. Rep el fitxer `.json` del puzzle i el token d'autenticació.
-2. Si s'indica `--stars`, envia directament aquella puntuació.
-3. Si no s'indica `--stars`, calcula la puntuació automàticament amb `eval.py`.
-4. Fa POST a `/api/puzzles/<id>/votes` amb la valoració.
+2. Calcula la puntuació automàticament amb `eval.py`.
+3. Fa POST a `/api/puzzles/<id>/votes` amb la valoració decimal (0.0–5.0).
 
 L'ID del puzzle és el nom del fitxer sense extensió. Si el fitxer ve de `download.py`, el nom ja és el hash SHA-256.
 
@@ -288,21 +277,7 @@ export KLOTSKI_TOKEN=el_teu_token
 Comandes:
 
 ```bash
-# Valoració automàtica (usa eval.py per calcular les estrelles)
 pixi run python src/rate.py puzzles/<id>.json --token <TOKEN>
-
-# Valoració explícita
-pixi run python src/rate.py puzzles/<id>.json --stars 3.5 --token <TOKEN>
-
-# Amb token via variable d'entorn
-export KLOTSKI_TOKEN=<TOKEN>
-pixi run python src/rate.py puzzles/<id>.json --stars 4.0
-
-# Simulació sense enviar (dry-run)
-pixi run python src/rate.py puzzles/<id>.json --stars 4.0 --token <TOKEN> --dry-run
-
-# Indicant graf explícit (evita reconstruir-lo)
-pixi run python src/rate.py puzzles/<id>.json --graphml puzzles/<id>.graphml --token <TOKEN>
 ```
 
 ## Funcionalitats útils de graph-tool per avaluar puzzles

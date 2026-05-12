@@ -2,12 +2,9 @@
 Envia una valoració (estrelles) d'un puzzle al repositori.
 
 Ús:
-    python src/rate.py <puzzle.json> --stars <0.0-5.0> --token <TOKEN>
-    python src/rate.py <puzzle.json> --token <TOKEN>         # usa nota d'eval.py
-    python src/rate.py <puzzle.json> --stars 4.0             # llegeix token de KLOTSKI_TOKEN
+    python src/rate.py <puzzle.json> --token <TOKEN>
 
-El token es pot indicar amb --token o amb la variable d'entorn KLOTSKI_TOKEN.
-Si no s'indica --stars, es calcula automàticament amb eval.py.
+Calcula la puntuació automàticament amb eval.py i l'envia a l'API.
 L'ID del puzzle és el nom del fitxer sense extensió.
   - Si el fitxer ve de download.py, el nom és el hash SHA-256 directament.
   - Si es vol indicar un ID explícit, usa --id.
@@ -17,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -31,12 +27,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("puzzle", help="Fitxer puzzle .json")
     parser.add_argument(
-        "--stars",
-        type=float,
-        default=None,
-        help="Puntuació a enviar (0.0 a 5.0). Si no s'indica, es calcula amb eval.py",
-    )
-    parser.add_argument(
         "--id",
         dest="puzzle_id",
         default=None,
@@ -44,8 +34,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--token",
-        default=None,
-        help="Token d'autenticació. Per defecte llegeix KLOTSKI_TOKEN",
+        required=True,
+        help="Token d'autenticació",
     )
     parser.add_argument(
         "--graphml",
@@ -59,16 +49,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
-def get_token(args: argparse.Namespace) -> str:
-    token = args.token or os.environ.get("KLOTSKI_TOKEN", "")
-    if not token:
-        print(
-            "Error: cal un token. Usa --token <TOKEN> o exporta KLOTSKI_TOKEN=<TOKEN>",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return token
 
 
 def compute_stars(puzzle_path: Path, graphml_path: str | None) -> float:
@@ -137,13 +117,10 @@ def main() -> int:
         return 1
 
     puzzle_id = args.puzzle_id or puzzle_path.stem
-    token = get_token(args)
+    token = args.token
 
-    if args.stars is not None:
-        stars = round(max(0.0, min(5.0, args.stars)), 2)
-    else:
-        print("Calculant puntuació amb eval.py ...", file=sys.stderr)
-        stars = compute_stars(puzzle_path, args.graphml)
+    print("Calculant puntuació amb eval.py ...", file=sys.stderr)
+    stars = compute_stars(puzzle_path, args.graphml)
 
     print(f"Puzzle ID: {puzzle_id}")
     print(f"Estrelles: {stars:.2f} / 5.00")
