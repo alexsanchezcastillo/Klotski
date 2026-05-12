@@ -59,7 +59,7 @@ Base URL: https://klotski.pauek.dev
 - GET /api/puzzles: retorna IDs de puzzles.
 - GET /api/puzzles/<id>: retorna puzzle + estrelles.
 - POST /api/puzzles: pujada de puzzle (requereix token).
-- POST /api/puzzles/<id>/votes: enviament de vot (requereix token).
+- POST /api/puzzles/<id>/votes: enviament de vot enter 0–5 (requereix token).
 
 ## Desenvolupament cronològic (apartat principal)
 
@@ -267,12 +267,6 @@ Funcionalitat principal:
 3. Fa POST a `/api/puzzles/<id>/votes` amb la valoració decimal (0.0–5.0).
 
 L'ID del puzzle és el nom del fitxer sense extensió. Si el fitxer ve de `download.py`, el nom ja és el hash SHA-256.
-
-El token es pot indicar per argument o amb la variable d'entorn `KLOTSKI_TOKEN`:
-
-```bash
-export KLOTSKI_TOKEN=el_teu_token
-```
 
 Comandes:
 

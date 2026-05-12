@@ -120,7 +120,7 @@ def main() -> int:
     token = args.token
 
     print("Calculant puntuació amb eval.py ...", file=sys.stderr)
-    stars = compute_stars(puzzle_path, args.graphml)
+    stars = round(compute_stars(puzzle_path, args.graphml))
 
     print(f"Puzzle ID: {puzzle_id}")
     print(f"Estrelles: {stars:.2f} / 5.00")
