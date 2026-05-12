@@ -20,6 +20,7 @@ L'objectiu principal es modelar l'espai d'estats d'un puzzle, trobar solucions m
 - [src/3D_view.py](src/3D_view.py): visualitzacio 3D del graf d'estats.
 - [src/download.py](src/download.py): descarrega de puzzles des del repositori.
 - [src/graph.py](src/graph.py): construccio del graf d'estats i export a GraphML.
+- [src/solve.py](src/solve.py): cerca del cami minim i export de la solucio a .sol.json.
 
 ## Model de dades
 
@@ -47,12 +48,6 @@ Format de moviments (.sol.json):
 
 ```json
 [[piece_index, "N"], [piece_index, "E"], ...]
-```
-
-També s'accepta la variant amb distancia:
-
-```json
-[[piece_index, "N", dist], ...]
 ```
 
 ## API del repositori
@@ -145,7 +140,49 @@ Nota de visualitzacio:
 - Per veure el graf en 3D, cal executar el visor `3D_view.py`.
 
 ```bash
+# Veure el graf sense cami de solucio
 pixi run python src/3D_view.py puzzles/sample3.graphml
+
+# Veure el graf amb el cami de solucio ressaltat (groc)
+pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
+```
+
+### Pas 3 - solve.py
+
+Tercer script implementat. Troba una solucio minima sobre el graf d'estats i la desa en format `.sol.json`.
+
+Funcionalitat principal:
+1. Carrega el puzzle.
+2. Carrega el graf `.graphml` si existeix.
+3. Si el graf no existeix, el construeix automaticament.
+4. Busca el cami mes curt des del node inicial fins a un node objectiu.
+5. Converteix la sequencia d'estats a moviments `[peca, direccio]`.
+6. Desa la solucio en un fitxer `.sol.json`.
+
+Comandes:
+
+```bash
+# Mode minim: puzzle -> usa <puzzle>.graphml i desa <puzzle>.sol.json
+pixi run python src/solve.py puzzles/sample3.json
+
+# Indicant fitxer de graf explicit
+pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml
+
+# Indicant graf i nom de sortida de la solucio
+pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml puzzles/sample3.sol.json
+```
+
+Validacio feta:
+1. Compatible amb visualitzacio 3D del cami:
+
+```bash
+pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
+```
+
+2. Compatible amb render de pelicula GIF:
+
+```bash
+pixi run python src/movie.py puzzles/sample3.json puzzles/sample3.sol.json img/sample3.gif
 ```
 
 ### Eines de suport (visualitzacio i validacio)
