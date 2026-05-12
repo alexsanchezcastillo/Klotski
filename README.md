@@ -19,6 +19,7 @@ L'objectiu principal es modelar l'espai d'estats d'un puzzle, trobar solucions m
 - [src/movie.py](src/movie.py): render de la solucio en GIF.
 - [src/3D_view.py](src/3D_view.py): visualitzacio 3D del graf d'estats.
 - [src/download.py](src/download.py): descarrega de puzzles des del repositori.
+- [src/graph.py](src/graph.py): construccio del graf d'estats i export a GraphML.
 
 ## Model de dades
 
@@ -88,6 +89,19 @@ El flux es el seguent:
 
 Permet seleccionar IDs concrets o limitar el nombre de descàrregues. Si un puzzle falla (xarxa o format invalid), el reporta pero continua amb la resta.
 
+Per consultar IDs directament des de l'API:
+
+```bash
+# Veure tots els identificadors
+curl https://klotski.pauek.dev/api/puzzles
+
+# Veure els primers 10 identificadors, formatats
+curl -s https://klotski.pauek.dev/api/puzzles | jq '.[0:10]'
+
+# Veure nomes el primer identificador
+curl -s https://klotski.pauek.dev/api/puzzles | jq -r '.[0]'
+```
+
 ```bash
 # Descarregar el top complet (fins a 100)
 pixi run python src/download.py
@@ -101,6 +115,37 @@ pixi run python src/download.py --id <ID1> --id <ID2>
 
 # Triar carpeta de sortida
 pixi run python src/download.py --limit 10 --out altra_carpeta
+```
+
+### Pas 2 - graph.py
+
+Segon script implementat. Construeix el graf d'estats accessibles des de l'estat inicial del puzzle.
+
+Model utilitzat:
+1. Node = un estat complet del puzzle (posicio de totes les peces).
+2. Aresta = un moviment valid d'un sol pas entre dos estats.
+3. Exploracio BFS des de l'estat inicial fins esgotar tots els estats accessibles.
+
+Sortida:
+- Fitxer `.graphml` per cada puzzle (per defecte amb el mateix nom del `.json`).
+- El graf guarda metadades de node (`state`, `is_start`, `is_goal`) i el `puzzle` original.
+
+Comandes:
+
+```bash
+# Crear el graf amb nom de sortida per defecte
+pixi run python src/graph.py puzzles/sample3.json
+
+# Crear el graf amb nom de sortida explicit
+pixi run python src/graph.py puzzles/sample3.json puzzles/sample3.graphml
+```
+
+Nota de visualitzacio:
+- Obrir directament un `.graphml` al navegador mostra XML (text), no una imatge.
+- Per veure el graf en 3D, cal executar el visor `3D_view.py`.
+
+```bash
+pixi run python src/3D_view.py puzzles/sample3.graphml
 ```
 
 ### Eines de suport (visualitzacio i validacio)
@@ -131,11 +176,4 @@ Visualitzacio 3D del graf:
 pixi run python src/3D_view.py puzzles/2swap.graphml
 pixi run python src/3D_view.py puzzles/2swap.graphml puzzles/2swap.sol.json
 ```
-
-## Criteris tecnics principals
-
-- Representacio canonica per evitar ambiguitats entre puzzles equivalents.
-- Reutilitzacio de moduls comuns per no duplicar logica.
-- Separacio entre dades del puzzle i estat actual per eficiència.
-- Compatibilitat entre scripts via formats JSON i GraphML.
 
