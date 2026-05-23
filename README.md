@@ -210,16 +210,16 @@ Objectiu: no premiar només puzzles «grans i llargs», sinó puzzles amb **estr
 
 #### Termes de puntuació (0–1)
 
-Definim $\operatorname{clamp}(x)=\min(1,\max(0,x))$:
+Definim $\text{clamp}(x)=\min(1,\max(0,x))$:
 
-- **Dificultat** $L = \operatorname{clamp}(\frac{\text{min\_len}}{80}) \cdot \operatorname{clamp}(\frac{\text{min\_len}}{10})$
-- **Mida** $S = \operatorname{clamp}(\frac{\log_{10}(n+1)}{5}) \cdot \operatorname{clamp}(\frac{n}{50})$
-- **Densitat del camí** $P = \operatorname{clamp}(\frac{\text{path\_density}}{8})$
-- **Coll d'ampolla** $K = \operatorname{clamp}(\frac{\text{max\_vertex\_betweenness}}{0.15 \cdot n})$
-- **Ramificació** (banda mitjana al volt de 2.8): $R = \operatorname{clamp}(1 - \frac{|\text{avg\_degree} - 2.8|}{2.8})$
-- **Clustering** $C = \operatorname{clamp}(\frac{\text{global\_clustering}}{0.25})$
-- **Penalització dead-ends** $D = \operatorname{clamp}(\frac{\text{dead\_end\_ratio}}{0.60})$
-- **Penalització trivial** $T$: combina solució curta (&lt; 10 movs) i graf petit (&lt; 50 nodes)
+- **Dificultat** $L = \text{clamp}(\frac{\text{min\_len}}{80}) \cdot \text{clamp}(\frac{\text{min\_len}}{10})$
+- **Mida** $S = \text{clamp}(\frac{\log_{10}(n+1)}{5}) \cdot \text{clamp}(\frac{n}{50})$
+- **Densitat del camí** $P = \text{clamp}(\frac{\text{path\_density}}{8})$
+- **Coll d'ampolla** $K = \text{clamp}(\frac{\text{max\_vertex\_betweenness}}{0.15 \cdot n})$
+- **Ramificació** (banda mitjana al volt de 2.8): $R = \text{clamp}(1 - \frac{|\text{avg\_degree} - 2.8|}{2.8})$
+- **Clustering** $C = \text{clamp}(\frac{\text{global\_clustering}}{0.25})$
+- **Penalització dead-ends** $D = \text{clamp}(\frac{\text{dead\_end\_ratio}}{0.60})$
+- **Penalització trivial** $T$: combina solució curta (< 10 movs) i graf petit (< 50 nodes)
 
 Si `solvable` és fals → **0 estrelles**.
 
@@ -230,7 +230,7 @@ $$
 $$
 
 $$
-\text{stars} = 5 \cdot \operatorname{clamp}(\text{raw})
+\text{stars} = 5 \cdot \text{clamp}(\text{raw})
 $$
 
 La sortida inclou `score_terms` (desglossament) amb `--json`.
