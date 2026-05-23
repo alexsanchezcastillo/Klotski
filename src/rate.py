@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def compute_stars(puzzle_path: Path, graphml_path: str | None) -> float:
-    """Calcula la puntuació del puzzle usant eval.py."""
+    """Calcula la puntuació [0, 5] del puzzle usant eval.py (heurística v2)."""
     import importlib
     import importlib.util
 
@@ -77,8 +77,11 @@ def compute_stars(puzzle_path: Path, graphml_path: str | None) -> float:
         g = build_graph(puzzle)
         g.save(str(graph_path))
 
-    metrics = eval_mod.compute_metrics(g, with_betweenness=False)
-    return float(eval_mod.score_from_metrics(metrics))
+    metrics = eval_mod.compute_metrics(g)
+    stars = float(eval_mod.score_from_metrics(metrics))
+    if not metrics.get("solvable", True):
+        print("Avís: el puzzle no és resoluble des de l'inicial.", file=sys.stderr)
+    return stars
 
 
 def post_vote(puzzle_id: str, stars: float, token: str, dry_run: bool) -> None:
@@ -119,8 +122,8 @@ def main() -> int:
     puzzle_id = args.puzzle_id or puzzle_path.stem
     token = args.token
 
-    print("Calculant puntuació amb eval.py ...", file=sys.stderr)
-    stars = round(compute_stars(puzzle_path, args.graphml))
+    print("Calculant puntuació amb eval.py (heurística v2) ...", file=sys.stderr)
+    stars = round(compute_stars(puzzle_path, args.graphml), 2)
 
     print(f"Puzzle ID: {puzzle_id}")
     print(f"Estrelles: {stars:.2f} / 5.00")

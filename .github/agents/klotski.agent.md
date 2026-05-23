@@ -72,7 +72,7 @@ POST body for vote:   `{"stars": 3.5}` with `Content-Type: application/json`
 1. **download.py** — GET /api/puzzles → list of IDs; GET /api/puzzles/<id> → save .json
 2. **graph.py**    — BFS/DFS from start state; each node = state tuple; edges = valid single moves; save as .graphml
 3. **solve.py**    — shortest path (BFS on graph) from start to any goal state; save .sol.json
-4. **eval.py**     — graph metrics: diameter, number of nodes/edges, bridge count, clustering…
-5. **rate.py**     — POST vote to API using token
+4. **eval.py**     — graph metrics + heuristic v2 score (0–5 stars): solution length, path density, vertex betweenness, branching band, size floors, dead-end/trivial penalties; unsolvable → 0
+5. **rate.py**     — POST vote to API using token (uses eval.py v2, stars as decimal 0.0–5.0)
 6. **generate.py** — random puzzle generation + filter by eval score
 7. **upload.py**   — POST new puzzle to API using token
