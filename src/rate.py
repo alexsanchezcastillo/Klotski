@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def compute_stars(puzzle_path: Path, graphml_path: str | None) -> float:
-    """Calcula la puntuació [0, 5] del puzzle usant eval.py (heurística v2)."""
+    """Calcula la puntuació [0, 5] del puzzle usant eval.py."""
     import importlib
     import importlib.util
 
@@ -122,7 +122,7 @@ def main() -> int:
     puzzle_id = args.puzzle_id or puzzle_path.stem
     token = args.token
 
-    print("Calculant puntuació amb eval.py (heurística v2) ...", file=sys.stderr)
+    print("Calculant puntuació amb eval.py ...", file=sys.stderr)
     stars = round(compute_stars(puzzle_path, args.graphml), 2)
 
     print(f"Puzzle ID: {puzzle_id}")
