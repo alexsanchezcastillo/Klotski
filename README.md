@@ -21,7 +21,7 @@ L'objectiu principal és modelar l'espai d'estats d'un puzzle, trobar solucions 
 - [src/download.py](src/download.py): descarrega de puzzles des del repositori.
 - [src/graph.py](src/graph.py): construcció del graf d'estats i export a GraphML.
 - [src/solve.py](src/solve.py): cerca del camí mínim i export de la solució a .sol.json.
-- [src/eval.py](src/eval.py): avaluació heurística v2 (0–5 estrelles) amb desglossament `score_terms`.
+- [src/eval.py](src/eval.py): avaluació d'interès d'un puzzle (0–5 estrelles) a partir del graf, amb desglossament `score_terms`.
 - [src/rate.py](src/rate.py): enviament de la valoració calculada per `eval.py` al repositori via API.
 
 ## Model de dades
@@ -189,47 +189,73 @@ pixi run python src/movie.py puzzles/sample3.json puzzles/sample3.sol.json img/s
 
 ### Pas 4 - eval.py
 
-Quart script implementat. Avalua un puzzle a partir de propietats del graf i retorna una puntuació estimada entre 0 i 5.
+Quart script implementat. Donat un puzzle (i el seu graf d'estats), assigna una puntuació d'**interès** entre **0 i 5 estrelles** per poder comparar puzzles i enviar valoracions al repositori col·laboratiu.
 
-**Heurística v2** (implementada a `compute_metrics` + `compute_score_terms` + `score_from_metrics`):
+El flux intern és:
 
-Objectiu: no premiar només puzzles «grans i llargs», sinó puzzles amb **estructura** (fases, colls d'ampolla), **dificultat real** i sense ser **trivials**.
+1. `compute_metrics` — llegeix el `.graphml` (o el construeix amb `graph.py`) i extreu mètriques del graf.
+2. `compute_score_terms` — normalitza cada mètrica a un valor entre 0 i 1 (L, P, K, R, S, C, D, T).
+3. `score_from_metrics` — combina els termes amb pesos i retorna `stars`.
 
-#### Mètriques calculades
+#### Què vol dir «interessant»
+
+Un puzzle interessant, segons la nostra heurística, combina:
+
+- **Dificultat**: calen molts moviments mínims per resoldre'l.
+- **Mida rellevant**: l'espai d'estats té prou configuracions, però no és un mini-puzzle trivial.
+- **Estructura**: hi ha colls d'ampolla (fases on cal passar per certs estats).
+- **Joc equilibrat**: ramificació moderada (opcions sense caos), no un simple passadís.
+- **Penalitzacions**: pocs dead-ends, resoluble des de l'inicial.
+
+#### Mètriques del graf (`compute_metrics`)
 
 | Mètrica | Descripció |
 |---------|------------|
-| `solvable` | Si algun objectiu és accessible des de l'inicial |
-| `min_solution_len` | Distància mínima start → goal (−1 si no resoluble) |
-| `path_density` | `min_solution_len / log₁₀(nodes + 1)` |
-| `nodes`, `edges`, `avg_degree` | Mida i ramificació del graf |
-| `dead_end_ratio` | Proporció d'estats amb grau 1 (excloent start/goal) |
-| `global_clustering` | Densitat local de connexions |
-| `max_vertex_betweenness` | Coll d'ampolla principal (sempre calculat) |
-| `connected_components` | Validació estructural (normalment 1) |
+| `solvable` | Si algun objectiu és accessible des de l'estat inicial |
+| `min_solution_len` | Distància mínima (nombre de moviments) fins a un estat objectiu; −1 si no és resoluble |
+| `path_density` | `min_solution_len / log10(nodes + 1)` — relació entre camí i mida del graf |
+| `nodes`, `edges` | Nombre d'estats accessibles i transicions |
+| `avg_degree` | Grau mitjà (moviments possibles per estat, de mitjana) |
+| `dead_end_ratio` | Fracció d'estats amb un sol moviment (excloent inici i objectius) |
+| `global_clustering` | Mesura de `graph-tool`: densitat local de connexions entre veïns |
+| `max_vertex_betweenness` | Màxima centralitat de intermediació — detecta el coll d'ampolla més fort |
+| `connected_components` | Comprovació estructural (en el nostre flux sol ser 1) |
 
 #### Termes de puntuació (0–1)
 
-Funció de normalització (al codi: `clamp01`):
+Tots els termes es limiten amb `clamp01` (al codi) o equivalent:
 
 ```text
 clamp(x) = min(1, max(0, x))
 ```
 
-Cada terme està entre 0 i 1. `n` = nodes; `min_len` = longitud mínima de solució.
+| Terme | Pes | Fórmula | Interpretació |
+|-------|-----|---------|---------------|
+| **L** | +35 % | `clamp(min_len/80) * clamp(min_len/10)` | Solució llarga; penalitza menys de 10 moviments |
+| **P** | +15 % | `clamp(path_density/8)` | El camí solució «ocupa» bé l'espai explorat |
+| **K** | +15 % | `clamp(max_vertex_betweenness / (0.15*n))` | Coll d'ampolla clar (fases, ponts estrets) |
+| **R** | +15 % | `clamp(1 - abs(avg_degree-2.8)/2.8)` | Ramificació òptima al volt de 2.8 |
+| **S** | +15 % | `clamp(log10(n+1)/5) * clamp(n/50)` | Graf gran en escala log; mínim 50 nodes |
+| **C** | +5 % | `clamp(global_clustering/0.25)` | Una mica de densitat local (secundari) |
+| **D** | −15 % | `clamp(dead_end_ratio/0.60)` | Massa estats «passadís» |
+| **T** | −10 % | `clamp(0.5*t_len + 0.5*t_size)` | Puzzle massa petit o fàcil |
 
-| Terme | Fórmula |
-|-------|---------|
-| **L** (dificultat) | `clamp(min_len/80) * clamp(min_len/10)` |
-| **S** (mida) | `clamp(log10(n+1)/5) * clamp(n/50)` |
-| **P** (densitat camí) | `clamp(path_density/8)` |
-| **K** (coll d'ampolla) | `clamp(max_vertex_betweenness / (0.15*n))` |
-| **R** (ramificació ~2.8) | `clamp(1 - abs(avg_degree-2.8)/2.8)` |
-| **C** (clustering) | `clamp(global_clustering/0.25)` |
-| **D** (dead-ends) | `clamp(dead_end_ratio/0.60)` |
-| **T** (trivial) | penalitza solució curta i graf petit |
+On `t_len` creix si `min_len < 10` i `t_size` si `nodes < 50` (cada un entre 0 i 1 abans del `clamp`).
 
-Si `solvable` és fals → **0 estrelles**.
+Si `solvable` és fals → tots els termes són 0 i **stars = 0**.
+
+#### Significat de cada terme (resum per al corrector)
+
+- **L**: dificultat per longitud de la solució mínima (pes principal).
+- **P**: la solució no és «curta» respecte a la mida del graf.
+- **K**: estructura amb fases (betweenness alta en algun estat).
+- **R**: equilibri de moviments possibles per estat (ni passadís ni caos).
+- **S**: espai d'estats gran, amb mínim de nodes.
+- **C**: lleu bonus si el graf té connexió local densa.
+- **D**: penalitza grafos amb massa dead-ends.
+- **T**: penalitza puzzles trivialment petits o curts.
+
+Combinació final:
 
 ```text
 raw = 0.35*L + 0.15*P + 0.15*K + 0.15*R + 0.15*S + 0.05*C - 0.15*D - 0.10*T
@@ -237,32 +263,18 @@ raw = clamp(raw)
 stars = 5 * raw
 ```
 
-La sortida inclou `score_terms` (desglossament) amb `--json`.
+Amb `--json`, la sortida inclou totes les mètriques, `score_terms` (L, P, K, …, raw) i `stars`.
 
-#### Per què és millor que la v1
+#### Funcionalitats i comandes
 
-- **Betweenness** integrada → detecta fases i ponts estrets.
-- **Sòls mínims** → evita 4–5 estrelles a puzzles minúsculs.
-- **Densitat del camí** → no premia només molts nodes sense relació amb la solució.
-- **Ramificació en banda** → evita grafos caòtics o purament lineals.
-- **Resolubilitat** → 0 estrelles si el puzzle no es pot resoldre.
-
-Funcionalitats:
-
-- Construcció automàtica del `.graphml` si no existeix.
-- `--json`: sortida amb mètriques, `score_terms` i `stars`.
-- `--with-betweenness`: afegeix `max_edge_betweenness` (la de vèrtexs ja entra a la nota).
-
-Comandes:
+- Si no existeix el `.graphml`, el construeix automàticament (pot trigar en puzzles grans).
+- `--with-betweenness`: afegeix `max_edge_betweenness` a la sortida (informatiu; la nota usa la de vèrtexs).
 
 ```bash
-# Avaluació textual amb desglossament
+# Avaluació amb desglossament a la terminal
 pixi run python src/eval.py puzzles/sample3.json
 
-# Sortida JSON (per comparar puzzles)
-pixi run python src/eval.py src/puzzles/<id>.json --json
-
-# Puzzles descarregats del repositori
+# Sortida JSON (recomanat per comparar puzzles)
 pixi run python src/eval.py src/puzzles/<id>.json --json
 ```
 
@@ -272,7 +284,7 @@ Cinquè script implementat. Envia una valoració (estrelles) d'un puzzle al repo
 
 Funcionalitat principal:
 1. Rep el fitxer `.json` del puzzle i el token d'autenticació.
-2. Calcula la puntuació amb la **mateixa heurística v2** que `eval.py`.
+2. Calcula la puntuació amb `eval.py` (mateixa fórmula que l'avaluació local).
 3. Fa POST a `/api/puzzles/<id>/votes` amb `stars` en decimal (0.0–5.0, arrodonit a 2 decimals).
 
 L'ID del puzzle és el nom del fitxer sense extensió. Si el fitxer ve de `download.py`, el nom ja és el hash SHA-256.
@@ -287,11 +299,9 @@ pixi run python src/rate.py src/puzzles/<id>.json --token <TOKEN>
 pixi run python src/rate.py src/puzzles/<id>.json --token <TOKEN> --dry-run
 ```
 
-## Funcionalitats útils de graph-tool per avaluar puzzles
+## Funcionalitats de graph-tool usades a `eval.py`
 
-`graph-tool` és la llibreria externa que fem servir per treballar amb grafs. La idea per a `eval.py` és reutilitzar aquestes funcionalitats per mesurar propietats del graf d'un puzzle i aprofitar-les per avaluar puzzles o generar-ne de nous de més qualitat.
-
-Selecció inicial de funcionalitats útils:
+`graph-tool` és la llibreria externa per construir el graf i calcular mètriques. A `eval.py` en fem servir, entre d'altres:
 
 1. `shortest_distance`
 - Calcula distàncies mínimes entre nodes.
@@ -330,11 +340,11 @@ Interpretació per al projecte:
 - Colls d'ampolla i centralitats: indiquen si el puzzle obliga a passar per fases concretes.
 - Clustering o densitat local: indica si hi ha molta flexibilitat local o estructura més rígida.
 
-Les mesures 1, 3, 4 i 6 estan integrades a la heurística v2 de `eval.py`; la 4 (betweenness de vèrtexs) és ara part central de la puntuació.
+A `eval.py` fem servir `shortest_distance`, `betweenness`, `global_clustering` i `label_components`, entre d'altres.
 
 ## Investigació 2: visualitzar grafs i definir propietats d'avaluació
 
-Anàlisi dels grafs existents per validar i afinar la heurística v2 de `eval.py`.
+Anàlisi dels grafs existents per justificar les mètriques i els pesos de `eval.py`.
 
 Objectiu:
 
@@ -373,20 +383,17 @@ Observacions inicials:
 - Els puzzles amb camí mínim més llarg tendeixen a requerir més reorganització intermèdia.
 - En el nostre flux (graf construït des de l'estat inicial), el nombre de components connexos és habitualment 1; per tant, aquesta mètrica és sobretot de validació i no de dificultat.
 
-Propietats implementades a `eval.py` (v2):
+Resum de la correspondència amb `eval.py`:
 
-1. `min_solution_len` + sòl mínim de 10 moviments.
-2. `nodes` (amb sòl de 50 nodes) i `path_density`.
-3. `avg_degree` en banda mitjana (~2.8).
-4. `dead_end_ratio` (penalització −15 %).
-5. `max_vertex_betweenness` (pes +15 %).
-6. `global_clustering` (pes +5 %).
-7. `solvable` → 0 estrelles si no es pot resoldre.
+| Idea visual (3D_view) | Terme / mètrica |
+|-----------------------|-----------------|
+| Camí llarg en groc | L, P |
+| «Pont» estret al mig del graf | K (`max_vertex_betweenness`) |
+| Molts nodes | S |
+| Graf molt lineal | D (dead-ends), C baix |
+| Puzzle petit o resolt en poc | T, L baix |
 
-Decisió pràctica:
-
-- Components connexos: comprovació estructural (no puntua directament).
-- Calibrar pesos comparant l'ordre de `stars` amb puzzles provats manualment (`play.py`, `3D_view.py`).
+Per validar la puntuació, comparem l'ordre de `stars` amb puzzles provats manualment (`play.py`, `3D_view.py`).
 
 ### Eines de suport (visualització i validació)
 
@@ -425,27 +432,11 @@ pixi run python src/3D_view.py puzzles/2swap.graphml puzzles/2swap.sol.json
 | `generate.py`, `upload.py` | Pendents |
 | `rate_all.py` | Opcional (revalorar tots els puzzles del repo) |
 
-Flux recomanat per valorar puzzles d'altres grups:
+Flux per valorar puzzles d'altres grups al repositori:
 
 1. `download.py --out src/puzzles`
 2. `eval.py ... --json` (comparar puntuacions)
-3. `rate.py ... --token` (enviar vots al repositori)
-
-**Entrega**: ZIP sense la carpeta `.pixi` (~1.3 GB).
-
-## Estat del projecte i pendents
-
-| Eina | Estat |
-|------|--------|
-| `download.py`, `graph.py`, `solve.py`, `eval.py`, `rate.py` | Implementats |
-| `generate.py`, `upload.py` | Pendents |
-| `rate_all.py` | Opcional (revalorar tots els puzzles del repo) |
-
-Flux recomanat per valorar puzzles d'altres grups:
-
-1. `download.py --out src/puzzles`
-2. `eval.py ... --json` (comparar puntuacions)
-3. `rate.py ... --token` (enviar votos al repositori)
+3. `rate.py ... --token` (enviar vots)
 
 **Entrega**: ZIP sense la carpeta `.pixi` (~1.3 GB).
 
