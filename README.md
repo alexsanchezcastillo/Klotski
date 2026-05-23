@@ -210,28 +210,32 @@ Objectiu: no premiar només puzzles «grans i llargs», sinó puzzles amb **estr
 
 #### Termes de puntuació (0–1)
 
-Definim $\text{clamp}(x)=\min(1,\max(0,x))$:
+Funció de normalització (al codi: `clamp01`):
 
-- **Dificultat** $L = \text{clamp}(\frac{\text{min\_len}}{80}) \cdot \text{clamp}(\frac{\text{min\_len}}{10})$
-- **Mida** $S = \text{clamp}(\frac{\log_{10}(n+1)}{5}) \cdot \text{clamp}(\frac{n}{50})$
-- **Densitat del camí** $P = \text{clamp}(\frac{\text{path\_density}}{8})$
-- **Coll d'ampolla** $K = \text{clamp}(\frac{\text{max\_vertex\_betweenness}}{0.15 \cdot n})$
-- **Ramificació** (banda mitjana al volt de 2.8): $R = \text{clamp}(1 - \frac{|\text{avg\_degree} - 2.8|}{2.8})$
-- **Clustering** $C = \text{clamp}(\frac{\text{global\_clustering}}{0.25})$
-- **Penalització dead-ends** $D = \text{clamp}(\frac{\text{dead\_end\_ratio}}{0.60})$
-- **Penalització trivial** $T$: combina solució curta (< 10 movs) i graf petit (< 50 nodes)
+```text
+clamp(x) = min(1, max(0, x))
+```
+
+Cada terme està entre 0 i 1. `n` = nodes; `min_len` = longitud mínima de solució.
+
+| Terme | Fórmula |
+|-------|---------|
+| **L** (dificultat) | `clamp(min_len/80) * clamp(min_len/10)` |
+| **S** (mida) | `clamp(log10(n+1)/5) * clamp(n/50)` |
+| **P** (densitat camí) | `clamp(path_density/8)` |
+| **K** (coll d'ampolla) | `clamp(max_vertex_betweenness / (0.15*n))` |
+| **R** (ramificació ~2.8) | `clamp(1 - abs(avg_degree-2.8)/2.8)` |
+| **C** (clustering) | `clamp(global_clustering/0.25)` |
+| **D** (dead-ends) | `clamp(dead_end_ratio/0.60)` |
+| **T** (trivial) | penalitza solució curta i graf petit |
 
 Si `solvable` és fals → **0 estrelles**.
 
-Puntuació crua:
-
-$$
-\text{raw} = 0.35L + 0.15P + 0.15K + 0.15R + 0.15S + 0.05C - 0.15D - 0.10T
-$$
-
-$$
-\text{stars} = 5 \cdot \text{clamp}(\text{raw})
-$$
+```text
+raw = 0.35*L + 0.15*P + 0.15*K + 0.15*R + 0.15*S + 0.05*C - 0.15*D - 0.10*T
+raw = clamp(raw)
+stars = 5 * raw
+```
 
 La sortida inclou `score_terms` (desglossament) amb `--json`.
 
