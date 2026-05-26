@@ -17,11 +17,10 @@ Paràmetres principals:
     --out        Fitxer de sortida (per defecte puzzles/generated_<hash>.json)
 
 Heurística aplicada:
-    1. Genera `candidates` puzzles aleatoris amb peces de formes variades.
-    2. Avalua cadascun amb les mètriques de eval.py (sense construir el graf
-       complet: fa un BFS limitat per filtrar ràpidament els insolubles).
-    3. Construeix el graf complet dels candidats que superen el filtre.
-    4. Retorna el que obté la millor puntuació, sempre que superi min-stars.
+    1. Col·loca peces aleatòriament: aquesta és la configuració objectiu (goal state).
+    2. Fa BFS des del goal state fins a max_nodes nodes per explorar l'espai d'estats.
+    3. Tria com a estat inicial un estat en el top 20% de profunditat (molt llunyà del goal).
+    4. Avalua amb eval.py i retorna el millor candidat que superi min-stars.
 """
 
 # pyright: reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownParameterType=false
@@ -129,76 +128,74 @@ def _canonicalize(
     return list(ps), list(pos)
 
 
-def _goal_for_piece(
-    rng: random.Random,
+# ---------------------------------------------------------------------------
+# BFS multi-font per trobar la distància real mínima al goal
+# ---------------------------------------------------------------------------
+
+_DELTAS: dict[str, tuple[int, int]] = {"N": (0, -1), "S": (0, 1), "E": (1, 0), "W": (-1, 0)}
+
+
+def _expand_state(
+    puzzle: Puzzle, pos_key: tuple[Coord, ...]
+) -> list[tuple[Coord, ...]]:
+    """Retorna les claus de tots els estats veïns d'un estat donat."""
+    state = State(pos_key)
+    neighbours = []
+    for piece_idx, direction, _ in possible_moves(puzzle, state):
+        new_positions = list(pos_key)
+        px, py = new_positions[piece_idx]
+        dx, dy = _DELTAS[direction]
+        new_positions[piece_idx] = (px + dx, py + dy)
+        neighbours.append(tuple(new_positions))
+    return neighbours
+
+
+def _multi_source_bfs(
     puzzle: Puzzle,
-    piece_idx: int,
-    max_attempts: int = 100,
-) -> Coord | None:
+    goal_piece_idx: int,
+    goal_pos: Coord,
+    max_nodes: int = 8000,
+) -> dict[tuple[Coord, ...], int]:
     """
-    Tria una posició objectiu per a la peça donada, diferent de la inicial.
-    La posició ha de fer que la peça no surti del taulell i no col·lideixi
-    amb les parets (però sí pot coincidir amb altres peces perquè l'objectiu
-    no implica que el taulell estigui buit allà).
+    Calcula la distància mínima real de cada estat a qualsevol estat objectiu.
+
+    Pas 1: BFS des del goal_state per descobrir l'espai d'estats accessible.
+    Pas 2: Identifica tots els estats objectiu dins l'espai descobert.
+    Pas 3: BFS multi-font des de tots els estats objectiu simultàniament.
+
+    Retorna {positions_tuple -> min_moviments_per_resoldre}.
     """
-    shape = puzzle.pieces[piece_idx].coords
-    bw = max(x for x, _ in shape) + 1
-    bh = max(y for _, y in shape) + 1
-    current = puzzle.start.positions[piece_idx]
+    # Pas 1: descobrir l'espai d'estats des del goal_state (puzzle.start = goal_state)
+    origin = puzzle.start.positions
+    explored: set[tuple[Coord, ...]] = {origin}
+    bfs_queue: deque[tuple[Coord, ...]] = deque([origin])
 
-    blocked: set[Coord] = set(puzzle.walls)
+    while bfs_queue and len(explored) < max_nodes:
+        pos_key = bfs_queue.popleft()
+        for nb in _expand_state(puzzle, pos_key):
+            if nb not in explored:
+                explored.add(nb)
+                bfs_queue.append(nb)
 
-    for _ in range(max_attempts):
-        gx = rng.randint(0, puzzle.W - bw)
-        gy = rng.randint(0, puzzle.H - bh)
-        if (gx, gy) == current:
-            continue
-        cells = {(gx + dx, gy + dy) for dx, dy in shape}
-        if cells & blocked:
-            continue
-        return (gx, gy)
-    return None
+    # Pas 2: tots els estats objectiu dins l'espai descobert
+    goal_keys = [k for k in explored if k[goal_piece_idx] == goal_pos]
+    if not goal_keys:
+        return {}
 
+    # Pas 3: BFS multi-font des de tots els estats objectiu
+    dist_map: dict[tuple[Coord, ...], int] = {g: 0 for g in goal_keys}
+    ms_queue: deque[tuple[tuple[Coord, ...], int]] = deque(
+        (g, 0) for g in goal_keys
+    )
 
-# ---------------------------------------------------------------------------
-# BFS limitat per detectar si el puzzle és soluble (ràpid)
-# ---------------------------------------------------------------------------
+    while ms_queue:
+        pos_key, dist = ms_queue.popleft()
+        for nb in _expand_state(puzzle, pos_key):
+            if nb in explored and nb not in dist_map:
+                dist_map[nb] = dist + 1
+                ms_queue.append((nb, dist + 1))
 
-
-def _bfs_limited(puzzle: Puzzle, max_nodes: int = 5000) -> int | None:
-    """
-    BFS des de l'estat inicial. Retorna la longitud de la solució mínima
-    si es troba dins dels primers max_nodes nodes explorats, o None si no.
-    """
-    def is_goal(state: State) -> bool:
-        return all(state.positions[i] == pos for i, pos in puzzle.goals)
-
-    start = puzzle.start
-    visited: dict[tuple[Coord, ...], int] = {start.positions: 0}
-    queue: deque[tuple[State, int]] = deque([(start, 0)])
-
-    while queue and len(visited) < max_nodes:
-        state, dist = queue.popleft()
-        if is_goal(state):
-            return dist
-        for piece_idx, direction, _ in possible_moves(puzzle, state):
-            new_positions = list(state.positions)
-            px, py = new_positions[piece_idx]
-            if direction == "N":
-                py -= 1
-            elif direction == "S":
-                py += 1
-            elif direction == "E":
-                px += 1
-            elif direction == "W":
-                px -= 1
-            new_positions[piece_idx] = (px, py)
-            key = tuple(new_positions)
-            if key not in visited:
-                visited[key] = dist + 1
-                queue.append((State(tuple(new_positions)), dist + 1))
-
-    return None
+    return dist_map
 
 
 # ---------------------------------------------------------------------------
@@ -211,22 +208,25 @@ def generate_candidate(
     W: int,
     H: int,
     n_pieces: int,
+    bfs_max_nodes: int = 8000,
+    min_depth: int = 3,
 ) -> Puzzle | None:
     """
-    Genera un puzzle aleatori amb n_pieces peces i almenys un objectiu.
-    Retorna None si no es pot generar un puzzle vàlid.
+    Genera un puzzle aleatori usant l'estratègia de scramble des del goal:
+    1. Col·loca peces aleatòriament → configuració objectiu (goal state).
+    2. Defineix el goal com la posició de la peça més gran en aquesta configuració.
+    3. BFS des del goal state per explorar estats accessibles.
+    4. Tria un estat en el top 20% de profunditat com a start (llunyà del goal).
+    Retorna None si no es pot generar un puzzle vàlid o si és trivial.
     """
     occupied: set[Coord] = set()
     walls: set[Coord] = set()
-
     pieces_raw: list[list[Coord]] = []
     positions: list[Coord] = []
 
-    # Triar i col·locar peces aleatòries
     for _ in range(n_pieces):
         shape = rng.choice(PIECE_SHAPES)
         bw, bh = _bounding_box(shape)
-        # Descartar formes massa grans per al taulell
         if bw > W or bh > H:
             continue
         pos = _try_place_piece(rng, W, H, shape, occupied, walls)
@@ -241,55 +241,72 @@ def generate_candidate(
     if len(pieces_raw) < 2:
         return None
 
-    # Construir objectes Piece
     try:
         pieces = [Piece(*shape) for shape in pieces_raw]
     except ValueError:
         return None
 
-    # Canonicalitzar ordre
     pieces, positions = _canonicalize(pieces, positions)
 
+    # La disposició aleatòria és el goal state
+    goal_state = State(tuple(positions))
+
+    # La peça objectiu és la més gran (més maniobra necessària)
+    piece_sizes = [(sum(1 for _ in p.coords), i) for i, p in enumerate(pieces)]
+    goal_piece_idx = max(piece_sizes)[1]
+    goal_pos: Coord = positions[goal_piece_idx]
+    goals = ((goal_piece_idx, goal_pos),)
+
     try:
-        state = State(tuple(positions))
-        puzzle = Puzzle(
+        puzzle_from_goal = Puzzle(
             W=W,
             H=H,
             walls=tuple(sorted(walls)),
             pieces=tuple(pieces),
-            start=state,
-            goals=(),  # temporal, sense objectiu encara
+            start=goal_state,
+            goals=goals,
         )
     except ValueError:
         return None
 
-    # Triar un objectiu: la peça amb forma més gran (que requerirà més maniobra)
-    # i una posició objectiu diferent de l'actual
-    piece_sizes = [(sum(1 for _ in p.coords), i) for i, p in enumerate(pieces)]
-    piece_sizes.sort(reverse=True)
-
-    goal_piece_idx: int | None = None
-    goal_pos: Coord | None = None
-
-    for _, idx in piece_sizes:
-        goal_pos = _goal_for_piece(rng, puzzle, idx)
-        if goal_pos is not None:
-            goal_piece_idx = idx
-            break
-
-    if goal_piece_idx is None or goal_pos is None:
+    # BFS multi-font: distància real mínima al goal per a cada estat
+    dist_map = _multi_source_bfs(
+        puzzle_from_goal, goal_piece_idx, goal_pos, max_nodes=bfs_max_nodes
+    )
+    if not dist_map:
         return None
 
-    goals = tuple(sorted([(goal_piece_idx, goal_pos)]))
+    # Excloem els propis estats objectiu (dist=0) i triem del top 20% de profunditat
+    max_depth = max(dist_map.values())
+    if max_depth < min_depth:
+        return None
+
+    threshold = max_depth * 0.8
+    deep_states = [
+        positions_key
+        for positions_key, depth in dist_map.items()
+        if depth >= threshold and depth > 0
+    ]
+    if not deep_states:
+        return None
+    start_positions = list(rng.choice(deep_states))
+
+    # Re-canonicalitzar: (forma, posició_start) pot diferir de (forma, posició_goal)
+    # Necessitem reordenar peces i posicions perquè Puzzle.__post_init__ ho accepti.
+    indexed = sorted(range(len(pieces)), key=lambda i: (pieces[i], start_positions[i]))
+    sorted_pieces = [pieces[i] for i in indexed]
+    sorted_start = [start_positions[i] for i in indexed]
+    new_goal_idx = indexed.index(goal_piece_idx)
+    new_goals = ((new_goal_idx, goal_pos),)
 
     try:
         return Puzzle(
             W=W,
             H=H,
             walls=tuple(sorted(walls)),
-            pieces=tuple(pieces),
-            start=state,
-            goals=goals,
+            pieces=tuple(sorted_pieces),
+            start=State(tuple(sorted_start)),
+            goals=new_goals,
         )
     except ValueError:
         return None
@@ -319,59 +336,55 @@ def generate_best(
     best_stars: float = -1.0
 
     evaluated = 0
-    skipped_unsolvable = 0
-    skipped_trivial = 0
+    skipped = 0
 
-    for _ in range(n_candidates * 5):  # marge ampli d'intents
+    max_attempts = max(n_candidates * 50, 200)
+    for attempt in range(max_attempts):
         if evaluated >= n_candidates:
             break
 
         candidate = generate_candidate(rng, W, H, n_pieces)
         if candidate is None:
-            continue
-
-        # Filtre ràpid: BFS limitat per descartar no solubles o trivials
-        sol_len = _bfs_limited(candidate, max_nodes=8000)
-        if sol_len is None:
-            skipped_unsolvable += 1
-            continue
-        if sol_len < 3:
-            skipped_trivial += 1
+            skipped += 1
             continue
 
         evaluated += 1
-        print(
-            f"  Candidat {evaluated}/{n_candidates}: "
-            f"solució mínima BFS={sol_len} moviments",
-            file=sys.stderr,
-        )
 
         # Construir el graf complet per obtenir mètriques precises
         try:
             g = build_graph(candidate)
         except Exception as e:
             print(f"    Error construint graf: {e}", file=sys.stderr)
+            skipped += 1
+            evaluated -= 1
             continue
 
         try:
             metrics = compute_metrics(g, with_betweenness=False)
         except Exception as e:
             print(f"    Error calculant mètriques: {e}", file=sys.stderr)
+            skipped += 1
+            evaluated -= 1
             continue
 
         stars = score_from_metrics(metrics)
         metrics["stars"] = stars
-        print(f"    Puntuació: {stars:.2f} / 5", file=sys.stderr)
+        sol_len = metrics.get("min_solution_len", "?")
+        print(
+            f"  Candidat {evaluated}/{n_candidates}: "
+            f"solució mínima={sol_len} moviments | puntuació={stars:.2f}/5",
+            file=sys.stderr,
+        )
 
         if stars > best_stars:
             best_stars = stars
             best_puzzle = candidate
             best_metrics = metrics
 
+    total_attempts = evaluated + skipped
     print(
-        f"\nResum: {evaluated} candidats avaluats, "
-        f"{skipped_unsolvable} insolubles descartats, "
-        f"{skipped_trivial} trivials descartats.",
+        f"\nResum: {evaluated} candidats avaluats, {skipped} descartats "
+        f"({total_attempts} intents totals, màxim {max_attempts}).",
         file=sys.stderr,
     )
 
