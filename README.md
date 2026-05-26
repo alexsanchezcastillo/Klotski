@@ -1,7 +1,6 @@
 # Klotski AP2 - Memòria Tècnica
 
 Projecte de resolució de puzzles de peces lliscants mitjançant grafs.
-L'objectiu principal és modelar l'espai d'estats d'un puzzle, trobar solucions mínimes i avaluar l'interès dels puzzles per contribuir al repositori col·laboratiu.
 
 ## Objectiu del projecte
 
@@ -21,47 +20,14 @@ L'objectiu principal és modelar l'espai d'estats d'un puzzle, trobar solucions 
 - [src/download.py](src/download.py): descarrega de puzzles des del repositori.
 - [src/graph.py](src/graph.py): construcció del graf d'estats i export a GraphML.
 - [src/solve.py](src/solve.py): cerca del camí mínim i export de la solució a .sol.json.
-- [src/eval.py](src/eval.py): avaluació d'interès d'un puzzle (0–5 estrelles) a partir del graf, amb desglossament `score_terms`.
-- [src/rate.py](src/rate.py): enviament de la valoració calculada per `eval.py` al repositori via API.
+- [src/eval.py](src/eval.py): avaluació d'un puzzle a partir del graf i càlcul d'una puntuació 0–5.
+- [src/rate.py](src/rate.py): enviament d'una valoració al repositori via API.
+- [src/generate.py](src/generate.py): generació aleatòria de puzzles nous amb filtre de qualitat.
+- [src/upload.py](src/upload.py): pujada d'un puzzle nou al repositori via API.
+- [src/rate_all.py](src/rate_all.py): revaloració massiva de tots els puzzles del repositori.
 
-## Model de dades
 
-Format JSON del puzzle:
-
-```json
-{
-  "W": 4,
-  "H": 5,
-  "walls": [[x, y], ...],
-  "pieces": [[[rx, ry], ...], ...],
-  "start": [[x, y], ...],
-  "goals": [{"i": 0, "pos": [x, y]}, ...]
-}
-```
-
-Criteris clau:
-
-- Les peces es defineixen amb coordenades relatives normalitzades (sense valors negatius).
-- La posició de cada peça és la cantonada superior esquerra del rectangle contenidor.
-- Un estat és la llista de posicions de totes les peces, en ordre canònic.
-- Un puzzle està resolt quan es compleixen tots els objectius.
-
-Format de moviments (.sol.json):
-
-```json
-[[piece_index, "N"], [piece_index, "E"], ...]
-```
-
-## API del repositori
-
-Base URL: https://klotski.pauek.dev
-
-- GET /api/puzzles: retorna IDs de puzzles.
-- GET /api/puzzles/<id>: retorna puzzle + estrelles.
-- POST /api/puzzles: pujada de puzzle (requereix token).
-- POST /api/puzzles/<id>/votes: enviament de vot enter 0–5 (requereix token).
-
-## Desenvolupament cronològic (apartat principal)
+## Desenvolupament cronològic
 
 Aquest apartat descriu el projecte en l'ordre real de construcció.
 Cada script inclou la seva finalitat i les comandes d'ús.
@@ -82,7 +48,7 @@ El flux és el següent:
 1. GET /api/puzzles retorna una llista d'IDs (hash SHA-256 de cada puzzle).
 2. Per cada ID, GET /api/puzzles/<id> retorna el puzzle en JSON.
 3. Cada puzzle es valida amb Puzzle.from_json() per assegurar que el format és correcte.
-4. Es desa a puzzles/<id>.json amb indentació per facilitar la lectura.
+4. Es desa a puzzles/<id>.json.
 
 Permet seleccionar IDs concrets o limitar el nombre de descàrregues. Si un puzzle falla (xarxa o format invalid), el reporta pero continua amb la resta.
 
@@ -109,9 +75,6 @@ pixi run python src/download.py --limit 10
 # Descarregar un o diversos IDs concrets
 pixi run python src/download.py --id <ID>
 pixi run python src/download.py --id <ID1> --id <ID2>
-
-# Triar carpeta de sortida
-pixi run python src/download.py --limit 10 --out altra_carpeta
 ```
 
 ### Pas 2 - graph.py
@@ -125,12 +88,12 @@ Model utilitzat:
 
 Sortida:
 - Fitxer `.graphml` per cada puzzle (per defecte amb el mateix nom del `.json`).
-- El graf guarda metadades de node (`state`, `is_start`, `is_goal`) i el `puzzle` original.
+- El graf guarda dades de node (`state`, `is_start`, `is_goal`) i el `puzzle` original.
 
 Comandes:
 
 ```bash
-# Crear el graf amb nom de sortida per defecte
+# Crear el graf amb nom de sortida per defecte (mateix que el .json)
 pixi run python src/graph.py puzzles/sample3.json
 
 # Crear el graf amb nom de sortida explícit
@@ -174,7 +137,7 @@ pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml
 pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml puzzles/sample3.sol.json
 ```
 
-Validació feta:
+Opcionalitats un cop generat el graph:
 1. Compatible amb visualització 3D del camí:
 
 ```bash
@@ -189,93 +152,72 @@ pixi run python src/movie.py puzzles/sample3.json puzzles/sample3.sol.json img/s
 
 ### Pas 4 - eval.py
 
-Quart script implementat. Donat un puzzle (i el seu graf d'estats), assigna una puntuació d'**interès** entre **0 i 5 estrelles** per poder comparar puzzles i enviar valoracions al repositori col·laboratiu.
+Quart script implementat. Avalua un puzzle a partir de propietats del graf i retorna una puntuació estimada entre 0 i 5.
 
-El flux intern és:
+Base de disseny. Funcionalitats útils del graph-tool:
 
-1. `compute_metrics` — llegeix el `.graphml` (o el construeix amb `graph.py`) i extreu mètriques del graf.
-2. `compute_score_terms` — normalitza cada mètrica a un valor entre 0 i 1 (L, P, K, R, S, C, D, T).
-3. `score_from_metrics` — combina els termes amb pesos i retorna `stars`.
+1. Longitud mínima de solució (`min_solution_len`):
+- És la mesura principal de dificultat funcional.
+- Si per resoldre calen més moviments mínims, el puzzle acostuma a ser més exigent.
 
-#### Què vol dir «interessant»
+2. Mida de l'espai d'estats (`nodes`, `edges`):
+- Reflecteix quantes configuracions i transicions existeixen.
+- Espais més grans solen donar més complexitat combinatòria.
 
-Un puzzle interessant, segons la nostra heurística, combina:
+3. Ramificació (`avg_degree`):
+- Mesura quants moviments de mitjana hi ha des d'un estat.
+- Indica flexibilitat local de joc.
 
-- **Dificultat**: calen molts moviments mínims per resoldre'l.
-- **Mida rellevant**: l'espai d'estats té prou configuracions, però no és un mini-puzzle trivial.
-- **Estructura**: hi ha colls d'ampolla (fases on cal passar per certs estats).
-- **Joc equilibrat**: ramificació moderada (opcions sense caos), no un simple passadís.
-- **Penalitzacions**: pocs dead-ends, resoluble des de l'inicial.
+4. Dead-ends (`dead_end_ratio`):
+- Percentatge d'estats amb grau 1 (excloent start/goal).
+- Massa dead-ends pot fer el graf menys ric i més lineal.
 
-#### Mètriques del graf (`compute_metrics`)
+5. Clustering (`global_clustering`):
+- Captura densitat local de connexions.
+- Diferencia grafs molt lineals de grafs amb zones més denses.
 
-| Mètrica | Descripció |
-|---------|------------|
-| `solvable` | Si algun objectiu és accessible des de l'estat inicial |
-| `min_solution_len` | Distància mínima (nombre de moviments) fins a un estat objectiu; −1 si no és resoluble |
-| `path_density` | `min_solution_len / log10(nodes + 1)` — relació entre camí i mida del graf |
-| `nodes`, `edges` | Nombre d'estats accessibles i transicions |
-| `avg_degree` | Grau mitjà (moviments possibles per estat, de mitjana) |
-| `dead_end_ratio` | Fracció d'estats amb un sol moviment (excloent inici i objectius) |
-| `global_clustering` | Mesura de `graph-tool`: densitat local de connexions entre veïns |
-| `max_vertex_betweenness` | Màxima centralitat de intermediació — detecta el coll d'ampolla més fort |
-| `connected_components` | Comprovació estructural (en el nostre flux sol ser 1) |
+6. Components connexos (`connected_components`):
+- En el nostre flux és sobretot una comprovació (normalment 1), no la mètrica principal de dificultat.
 
-#### Termes de puntuació (0–1)
+Fórmula aplicada (heurística):
 
-Tots els termes es limiten amb `clamp01` (al codi) o equivalent:
+Definim $\operatorname{clamp}(x)=\min(1,\max(0,x))$ i normalitzem:
 
-```text
-clamp(x) = min(1, max(0, x))
-```
+$$
+L=\operatorname{clamp}\!\left(\frac{\text{min\_solution\_len}}{80}\right),\quad
+S=\operatorname{clamp}\!\left(\frac{\log_{10}(\text{nodes}+1)}{5}\right),\quad
+B=\operatorname{clamp}\!\left(\frac{\text{avg\_degree}}{4}\right),
+$$
 
-| Terme | Pes | Fórmula | Interpretació |
-|-------|-----|---------|---------------|
-| **L** | +35 % | `clamp(min_len/80) * clamp(min_len/10)` | Solució llarga; penalitza menys de 10 moviments |
-| **P** | +15 % | `clamp(path_density/8)` | El camí solució «ocupa» bé l'espai explorat |
-| **K** | +15 % | `clamp(max_vertex_betweenness / (0.15*n))` | Coll d'ampolla clar (fases, ponts estrets) |
-| **R** | +15 % | `clamp(1 - abs(avg_degree-2.8)/2.8)` | Ramificació òptima al volt de 2.8 |
-| **S** | +15 % | `clamp(log10(n+1)/5) * clamp(n/50)` | Graf gran en escala log; mínim 50 nodes |
-| **C** | +5 % | `clamp(global_clustering/0.25)` | Una mica de densitat local (secundari) |
-| **D** | −15 % | `clamp(dead_end_ratio/0.60)` | Massa estats «passadís» |
-| **T** | −10 % | `clamp(0.5*t_len + 0.5*t_size)` | Puzzle massa petit o fàcil |
+$$
+C=\operatorname{clamp}\!\left(\frac{\text{global\_clustering}}{0.25}\right),\quad
+D=\operatorname{clamp}\!\left(\frac{\text{dead\_end\_ratio}}{0.60}\right).
+$$
 
-On `t_len` creix si `min_len < 10` i `t_size` si `nodes < 50` (cada un entre 0 i 1 abans del `clamp`).
+Puntuació crua:
 
-Si `solvable` és fals → tots els termes són 0 i **stars = 0**.
+$$
+	ext{raw}=0.45L+0.25S+0.15B+0.10C-0.10D
+$$
 
-#### Significat de cada terme (resum per al corrector)
+Puntuació final (estrelles):
 
-- **L**: dificultat per longitud de la solució mínima (pes principal).
-- **P**: la solució no és «curta» respecte a la mida del graf.
-- **K**: estructura amb fases (betweenness alta en algun estat).
-- **R**: equilibri de moviments possibles per estat (ni passadís ni caos).
-- **S**: espai d'estats gran, amb mínim de nodes.
-- **C**: lleu bonus si el graf té connexió local densa.
-- **D**: penalitza grafos amb massa dead-ends.
-- **T**: penalitza puzzles trivialment petits o curts.
+$$
+	ext{stars}=5\cdot\operatorname{clamp}(\text{extraw})
+$$
 
-Combinació final:
+En resum: més pes per a la longitud mínima de solució, pes secundari per la mida del graf i la ramificació, i penalització suau si hi ha massa dead-ends.
 
-```text
-raw = 0.35*L + 0.15*P + 0.15*K + 0.15*R + 0.15*S + 0.05*C - 0.15*D - 0.10*T
-raw = clamp(raw)
-stars = 5 * raw
-```
+Funcionalitats addicionals:
 
-Amb `--json`, la sortida inclou totes les mètriques, `score_terms` (L, P, K, …, raw) i `stars`.
+- Si no existeix el `.graphml`, el construeix automàticament.
+- Mode JSON per integrar amb scripts posteriors.
+- Opció `--with-betweenness` per calcular colls d'ampolla (més costós en grafs grans).
 
-#### Funcionalitats i comandes
-
-- Si no existeix el `.graphml`, el construeix automàticament (pot trigar en puzzles grans).
-- `--with-betweenness`: afegeix `max_edge_betweenness` a la sortida (informatiu; la nota usa la de vèrtexs).
+Comandes:
 
 ```bash
-# Avaluació amb desglossament a la terminal
 pixi run python src/eval.py puzzles/sample3.json
-
-# Sortida JSON (recomanat per comparar puzzles)
-pixi run python src/eval.py src/puzzles/<id>.json --json
 ```
 
 ### Pas 5 - rate.py
@@ -284,116 +226,125 @@ Cinquè script implementat. Envia una valoració (estrelles) d'un puzzle al repo
 
 Funcionalitat principal:
 1. Rep el fitxer `.json` del puzzle i el token d'autenticació.
-2. Calcula la puntuació amb `eval.py` (mateixa fórmula que l'avaluació local).
-3. Fa POST a `/api/puzzles/<id>/votes` amb `stars` en decimal (0.0–5.0, arrodonit a 2 decimals).
+2. Calcula la puntuació automàticament amb `eval.py`.
+3. Fa POST a `/api/puzzles/<id>/votes` amb la valoració decimal (0.0–5.0).
 
 L'ID del puzzle és el nom del fitxer sense extensió. Si el fitxer ve de `download.py`, el nom ja és el hash SHA-256.
 
 Comandes:
 
 ```bash
-# Enviar vot (requereix token UPC)
-pixi run python src/rate.py src/puzzles/<id>.json --token <TOKEN>
-
-# Provar sense enviar
-pixi run python src/rate.py src/puzzles/<id>.json --token <TOKEN> --dry-run
+pixi run python src/rate.py puzzles/<id>.json --token <TOKEN>
 ```
 
-## Funcionalitats de graph-tool usades a `eval.py`
+### Pas 6 - generate.py
 
-`graph-tool` és la llibreria externa per construir el graf i calcular mètriques. A `eval.py` en fem servir, entre d'altres:
+Sisè script implementat. Genera automàticament puzzles Klotski nous amb una puntuació de qualitat mínima garantida.
 
-1. `shortest_distance`
-- Calcula distàncies mínimes entre nodes.
-- En el projecte pot servir per mesurar la distància entre l'estat inicial i els objectius.
-- Un puzzle amb una solució mínima llarga pot ser més difícil o més interessant.
+Base de disseny (per què i com):
 
-2. `shortest_path`
-- Retorna un camí mínim entre dos nodes.
-- Ja tenim `solve.py` per obtenir la solució, però aquesta funció també pot ser útil per validar resultats o comparar camins.
+Generació completament aleatòria rarament produeix puzzles interessants: la majoria o bé no tenen solució assolible des de l'estat inicial, o bé es resolen en un o dos moviments. Per solucionar-ho, el script combina dos filtres:
 
-3. `label_components`
-- Detecta components connexes del graf.
-- En el nostre cas, el graf construït des de l'inicial ja és el component connex accessible, però pot ser útil per validar el graf o estudiar-ne variants.
+1. **Filtre ràpid (BFS limitat):** abans de construir el graf complet, es fa un BFS fins a un màxim de 8 000 nodes. Si no es troba cap estat objectiu o la solució és trivial (menys de 3 moviments), el candidat es descarta sense cost elevat.
 
-4. `betweenness`
-- Calcula centralitat de nodes i arestes.
-- Pot ajudar a detectar colls d'ampolla: estats pels quals passen molts camins curts.
-- Un puzzle amb colls d'ampolla clars pot tenir estructura més interessant.
+2. **Avaluació completa (graf + mètriques):** els candidats que passen el filtre ràpid es construeixen del tot amb `graph.py` i s'avaluen amb les mètriques de `eval.py` (longitud mínima de solució, mida de l'espai d'estats, ramificació, clustering, dead-ends). El millor candidat per sobre del llindar `--min-stars` es desa.
 
-5. `pagerank` o altres centralitats
-- Mesuren la importància estructural de nodes dins del graf.
-- Poden ajudar a veure si el graf està dominat per unes poques configuracions centrals o si és més homogeni.
+Pipeline de generació d'un candidat:
 
-6. `global_clustering`
-- Mesura fins a quin punt els veïns d'un node també estan connectats entre ells.
-- Pot servir per distingir grafs amb zones molt denses de grafs molt lineals.
+1. Triar aleatòriament $n$ peces d'un catàleg de formes predefinides (1×1, 1×2, 2×2, L, T, S/Z, etc.).
+2. Col·locar cada peça en una posició aleatòria lliure del taulell.
+3. Ordenar les peces en ordre canònic (forma, posició inicial).
+4. Triar la peça més gran com a peça objectiu i assignar-li una posició objectiu diferent de l'inicial.
+5. Validar el puzzle amb `Puzzle.from_json` / `Puzzle.__post_init__`.
 
-7. `label_largest_component`
-- Retorna la component connexa més gran.
-- Pot ser útil si més endavant es generen grafs de manera diferent o es comparen puzzles no necessàriament explorats des de l'inicial.
+Heurística de selecció:
 
-Interpretació per al projecte:
+- Es generen fins a `--candidates` candidats vàlids (descartant els no solubles i trivials).
+- De tots els avaluats, es retorna el que obté la puntuació `eval.py` més alta.
+- Si cap supera `--min-stars`, el script acaba amb error i no desa res.
 
-- Longitud de la solució mínima: indica dificultat bàsica.
-- Nombre de nodes i arestes: indica mida de l'espai d'estats.
-- Colls d'ampolla i centralitats: indiquen si el puzzle obliga a passar per fases concretes.
-- Clustering o densitat local: indica si hi ha molta flexibilitat local o estructura més rígida.
-
-A `eval.py` fem servir `shortest_distance`, `betweenness`, `global_clustering` i `label_components`, entre d'altres.
-
-## Investigació 2: visualitzar grafs i definir propietats d'avaluació
-
-Anàlisi dels grafs existents per justificar les mètriques i els pesos de `eval.py`.
-
-Objectiu:
-
-- Comparar estructures de grafs de puzzles diferents.
-- Relacionar estructura del graf amb dificultat percebuda.
-- Seleccionar un conjunt curt de mètriques útils per puntuar puzzles.
-
-Metodologia aplicada:
-
-1. Visualitzar cada graf amb `3D_view.py`.
-2. Mirar la ruta de solució ressaltada en groc quan hi ha `.sol.json`.
-3. Comparar mida del graf (nodes/arestes), longitud de solució i forma global.
-4. Identificar si el graf té colls d'ampolla, zones denses o estructura molt lineal.
-
-Comandes utilitzades:
+Comandes:
 
 ```bash
-# Visualització simple del graf
-pixi run python src/3D_view.py puzzles/2swap.graphml
-pixi run python src/3D_view.py puzzles/simplicity.graphml
-pixi run python src/3D_view.py puzzles/sample3.graphml
+# Generar amb paràmetres per defecte (4×5, 6 peces, 10 candidats, llindar 1.5)
+pixi run python src/generate.py
 
-# Visualització del graf amb camí de solució
-pixi run python src/3D_view.py puzzles/2swap.graphml puzzles/2swap.sol.json
-pixi run python src/3D_view.py puzzles/simplicity.graphml puzzles/simplicity.sol.json
-pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
+# Especificar dimensions i nombre de peces
+pixi run python src/generate.py --width 5 --height 5 --pieces 8
+
+# Augmentar el nombre de candidats per obtenir puzzles de més qualitat
+pixi run python src/generate.py --candidates 30 --min-stars 2.5
+
+# Reproduir un resultat concret amb llavor fixa
+pixi run python src/generate.py --seed 42
+
+# Desar en un fitxer específic
+pixi run python src/generate.py --out puzzles/nou_puzzle.json
 ```
 
-Observacions inicials:
+Sortida:
 
-- La mida del graf varia molt entre puzzles (per exemple, `sample1` és molt més gran que `sample3`).
-- Longituds de solució observades en fitxers existents:
-  - `2swap`: 17 moviments.
-  - `sample3`: 29 moviments.
-  - `simplicity`: 31 moviments.
-- Els puzzles amb camí mínim més llarg tendeixen a requerir més reorganització intermèdia.
-- En el nostre flux (graf construït des de l'estat inicial), el nombre de components connexos és habitualment 1; per tant, aquesta mètrica és sobretot de validació i no de dificultat.
+```
+Candidats: 10/10 avaluats, X insolubles descartats, Y trivials descartats.
+Puzzle desat a: puzzles/generated_<hash16>.json
+Dimensions: 4x5
+Peces: 6
+Nodes del graf: ...
+Longitud solució mínima: ...
+Puntuació: X.XXX / 5
+```
 
-Resum de la correspondència amb `eval.py`:
+### Pas 7 - upload.py
 
-| Idea visual (3D_view) | Terme / mètrica |
-|-----------------------|-----------------|
-| Camí llarg en groc | L, P |
-| «Pont» estret al mig del graf | K (`max_vertex_betweenness`) |
-| Molts nodes | S |
-| Graf molt lineal | D (dead-ends), C baix |
-| Puzzle petit o resolt en poc | T, L baix |
+Setè script implementat. Puja un puzzle nou al repositori col·laboratiu via API.
 
-Per validar la puntuació, comparem l'ordre de `stars` amb puzzles provats manualment (`play.py`, `3D_view.py`).
+Funcionalitat principal:
+1. Carrega el fitxer `.json` del puzzle.
+2. El valida localment amb `Puzzle.from_json` per detectar errors de format abans d'enviar.
+3. Fa POST a `/api/puzzles` amb el JSON del puzzle i el token d'autenticació.
+4. Mostra la resposta del servidor (normalment l'ID assignat).
+
+Notes:
+- El repositori accepta fins a 200 puzzles; si s'arriba al límit, el de menys puntuació pot ser substituït aleatòriament.
+- El flux recomanat és: `generate.py` → `eval.py` (verificar qualitat) → `upload.py`.
+
+Comandes:
+
+```bash
+# Pujar un puzzle generat
+pixi run python src/upload.py puzzles/generated_<hash>.json --token <TOKEN>
+
+# Verificar el payload sense enviar
+pixi run python src/upload.py puzzles/generated_<hash>.json --token <TOKEN> --dry-run
+```
+
+### Pas 8 (opcional) - rate_all.py
+
+Vuitè script implementat (opcional). Automatitza la revaloració de tots els puzzles del repositori amb el teu criteri actual d'`eval.py`.
+
+Funcionalitat principal:
+1. Obté els IDs del top del repositori (`GET /api/puzzles`).
+2. Descarrega cada puzzle si no existeix localment.
+3. Calcula estrelles amb `compute_stars` (mateixa lògica que `rate.py`).
+4. Envia cada vot a `POST /api/puzzles/<id>/votes`.
+
+Comandes:
+
+```bash
+# Revalorar tots els puzzles del top
+pixi run python src/rate_all.py --token <TOKEN>
+
+# Revalorar només els primers N
+pixi run python src/rate_all.py --token <TOKEN> --limit 20
+
+# Provar sense enviar vots
+pixi run python src/rate_all.py --token <TOKEN> --dry-run
+
+# Continuar encara que algun puzzle falli
+pixi run python src/rate_all.py --token <TOKEN> --continue-on-error
+```
+
+## Apèndix
 
 ### Eines de suport (visualització i validació)
 
@@ -424,19 +375,38 @@ pixi run python src/3D_view.py puzzles/2swap.graphml
 pixi run python src/3D_view.py puzzles/2swap.graphml puzzles/2swap.sol.json
 ```
 
-## Estat del projecte i pendents
 
-| Eina | Estat |
-|------|--------|
-| `download.py`, `graph.py`, `solve.py`, `eval.py`, `rate.py` | Implementats |
-| `generate.py`, `upload.py` | Pendents |
-| `rate_all.py` | Opcional (revalorar tots els puzzles del repo) |
+### Model de dades
 
-Flux per valorar puzzles d'altres grups al repositori:
+Format JSON del puzzle:
 
-1. `download.py --out src/puzzles`
-2. `eval.py ... --json` (comparar puntuacions)
-3. `rate.py ... --token` (enviar vots)
+```json
+{
+  "W": 4,
+  "H": 5,
+  "walls": [[x, y], ...],
+  "pieces": [[[rx, ry], ...], ...],
+  "start": [[x, y], ...],
+  "goals": [{"i": 0, "pos": [x, y]}, ...]
+}
+```
 
-**Entrega**: ZIP sense la carpeta `.pixi` (~1.3 GB).
+- Les peces es defineixen amb coordenades relatives normalitzades (sense valors negatius).
+- La posició de cada peça és la cantonada superior esquerra del rectangle contenidor.
+- Un estat és la llista de posicions de totes les peces, en ordre canònic.
+- Un puzzle està resolt quan es compleixen tots els objectius.
 
+Format de moviments (.sol.json):
+
+```json
+[[piece_index, "N"], [piece_index, "E"], ...]
+```
+
+### API del repositori
+
+Base URL: https://klotski.pauek.dev
+
+- GET /api/puzzles: retorna IDs de puzzles.
+- GET /api/puzzles/<id>: retorna puzzle + estrelles.
+- POST /api/puzzles: pujada de puzzle (requereix token).
+- POST /api/puzzles/<id>/votes: enviament de vot enter 0–5 (requereix token).
