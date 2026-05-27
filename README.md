@@ -2,51 +2,6 @@
 
 Resolució de puzzles de peces lliscants modelant l'**espai d'estats** com a graf: construcció del graf, solució mínima, heurística d'interès (0–5 estrelles) i integració amb el repositori col·laboratiu. 
 
-## Índex
-
-- [Guia ràpida (corrector)](#guia-rapida-corrector)
-- [Objectiu i pipeline](#objectiu-del-projecte)
-- [Estructura del codi](#estructura-del-codi)
-- [Model de dades](#model-de-dades) · [API](#api-del-repositori)
-- [Desenvolupament cronològic](#desenvolupament-cronològic-apartat-principal) — `download` → `graph` → `solve` → `eval` → `rate` → `generate`
-- [Investigació (`graph-tool` i 3D)](#investigació-1-algorismes-de-graph-tool-per-a-evalpy)
-- [Estat i entrega](#estat-del-projecte-i-pendents)
-
-## Guia ràpida (corrector) {#guia-rapida-corrector}
-
-**Què revisar primer**
-
-| Pregunta | On mirar |
-|----------|----------|
-| Com es modela un puzzle? | [Model de dades](#model-de-dades) |
-| Com es construeix el graf? | [Pas 2 — graph.py](#pas-2---graphpy) |
-| Com es resol? | [Pas 3 — solve.py](#pas-3---solvepy) |
-| Com es mesura l'«interès»? | [Pas 4 — eval.py](#pas-4---evalpy) (fórmula + taules) |
-| Per què aquestes mètriques? | [Investigació 1 i 2](#investigació-1-algorismes-de-graph-tool-per-a-evalpy) |
-
-**Verificació en un puzzle d'exemple** (`puzzles/sample3.json`):
-
-```bash
-pixi install
-pixi run python src/graph.py puzzles/sample3.json
-pixi run python src/solve.py puzzles/sample3.json
-pixi run python src/eval.py puzzles/sample3.json --json
-pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
-```
-
-**Convenció de fitxers**: `foo.json` → `foo.graphml` (mateix directori). `solve.py` i `eval.py` generen el `.graphml` si no existeix (mateix BFS que `graph.py`).
-
-```mermaid
-flowchart LR
-  JSON["puzzle.json"] --> GRAPH["graph.py / build_graph"]
-  GRAPH --> GML[".graphml"]
-  GML --> SOLVE["solve.py"]
-  SOLVE --> SOL[".sol.json"]
-  GML --> EVAL["eval.py"]
-  EVAL --> STARS["stars 0–5"]
-  STARS --> RATE["rate.py"]
-  RATE --> API["API /votes"]
-```
 
 ## Objectiu del projecte
 
@@ -57,58 +12,18 @@ flowchart LR
 
 ## Estructura del codi
 
-Núcli:
-
 - [src/puzzle.py](src/puzzle.py), [src/logic.py](src/logic.py): model i moviments.
-- [src/graph.py](src/graph.py): graf d'estats → `.graphml`.
+- [src/graph.py](src/graph.py): graf d'estats.
 - [src/solve.py](src/solve.py): camí mínim → `.sol.json`.
 - [src/eval.py](src/eval.py): mètriques + `score_terms` + `stars`.
 - [src/rate.py](src/rate.py): POST de valoració a l'API.
 - [src/download.py](src/download.py): descàrrega des del repositori.
 - [src/generate.py](src/generate.py): generació aleatòria filtrada per `eval.py`.
+- [src/upload.py](src/upload.py): penjar puzzles al web.
+- [src/rateall.py](src/rateall.py): valorar diversos puzzles de l'API (tots).
 
-Suport (validació / demo): [play.py](src/play.py), [image.py](src/image.py), [movie.py](src/movie.py), [3D_view.py](src/3D_view.py).
 
-## Model de dades {#model-de-dades}
-
-Format JSON del puzzle:
-
-```json
-{
-  "W": 4,
-  "H": 5,
-  "walls": [[x, y], ...],
-  "pieces": [[[rx, ry], ...], ...],
-  "start": [[x, y], ...],
-  "goals": [{"i": 0, "pos": [x, y]}, ...]
-}
-```
-
-Criteris clau:
-
-- Les peces es defineixen amb coordenades relatives normalitzades (sense valors negatius).
-- La posició de cada peça és la cantonada superior esquerra del rectangle contenidor.
-- Un estat és la llista de posicions de totes les peces, en ordre canònic.
-- Un puzzle està resolt quan es compleixen tots els objectius.
-
-Format de moviments (.sol.json):
-
-```json
-[[piece_index, "N"], [piece_index, "E"], ...]
-```
-
-## API del repositori {#api-del-repositori}
-
-Base URL: https://klotski.pauek.dev
-
-- GET /api/puzzles: retorna IDs de puzzles.
-- GET /api/puzzles/<id>: retorna puzzle + estrelles.
-- POST /api/puzzles: pujada de puzzle (requereix token).
-- POST /api/puzzles/<id>/votes: enviament de vot enter 0–5 (requereix token).
-
-## Desenvolupament cronològic (apartat principal) {#desenvolupament-cronològic-apartat-principal}
-
-Ordre real de construcció. Cada pas: finalitat + comandes.
+## Desenvolupament cronològic
 
 ### Pas 0 - Preparació de l'entorn
 
@@ -120,17 +35,9 @@ pixi install
 
 ### Pas 1 - download.py
 
-Primer script implementat. Connecta amb l'API pública del repositori per obtenir la llista de puzzles disponibles i descarregar-los en format JSON.
+Primer script implementat. Connecta amb l'API pública del repositori per obtenir la llista de puzzles disponibles i descarregar-los en format JSON. 
 
-El flux és el següent:
-1. GET /api/puzzles retorna una llista d'IDs (hash SHA-256 de cada puzzle).
-2. Per cada ID, GET /api/puzzles/<id> retorna el puzzle en JSON.
-3. Cada puzzle es valida amb Puzzle.from_json() per assegurar que el format és correcte.
-4. Es desa a puzzles/<id>.json amb indentació per facilitar la lectura.
-
-Permet seleccionar IDs concrets o limitar el nombre de descàrregues. Si un puzzle falla (xarxa o format invalid), el reporta pero continua amb la resta.
-
-Per consultar IDs directament des de l'API:
+Comandes:
 
 ```bash
 # Veure tots els identificadors
@@ -153,12 +60,9 @@ pixi run python src/download.py --limit 10
 # Descarregar un o diversos IDs concrets
 pixi run python src/download.py --id <ID>
 pixi run python src/download.py --id <ID1> --id <ID2>
-
-# Triar carpeta de sortida
-pixi run python src/download.py --limit 10 --out altra_carpeta
 ```
 
-### Pas 2 - graph.py {#pas-2---graphpy}
+### Pas 2 - graph.py
 
 Segon script implementat. Construeix el graf d'estats accessibles des de l'estat inicial del puzzle.
 
@@ -169,7 +73,7 @@ Model utilitzat:
 
 Sortida:
 - Fitxer `.graphml` per cada puzzle (per defecte amb el mateix nom del `.json`).
-- El graf guarda metadades de node (`state`, `is_start`, `is_goal`) i el `puzzle` original.
+- El graf guarda les dades dels nodes (`state`, `is_start`, `is_goal`) i el `puzzle` original.
 
 Comandes:
 
@@ -193,12 +97,12 @@ pixi run python src/3D_view.py puzzles/sample3.graphml
 pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
 ```
 
-### Pas 3 - solve.py {#pas-3---solvepy}
+### Pas 3 - solve.py
 
 Tercer script implementat. Troba una solució mínima sobre el graf d'estats i la desa en format `.sol.json`.
 
 Funcionalitat principal:
-1. Carrega el puzzle i el `.graphml` associat (o el genera; vegeu [convenció de fitxers](#guia-rapida-corrector)).
+1. Carrega el puzzle i el `.graphml` associat o el genera si no existeix.
 2. Busca el camí més curt des del node inicial fins a un node objectiu.
 3. Converteix la seqüència d'estats a moviments `[peça, direcció]`.
 4. Desa la solució en un fitxer `.sol.json`.
@@ -216,20 +120,20 @@ pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml
 pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml puzzles/sample3.sol.json
 ```
 
-Validació feta:
-1. Compatible amb visualització 3D del camí:
+Què es pot fer després de generar solució:
+1. Visualització 3D del camí:
 
 ```bash
 pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
 ```
 
-2. Compatible amb render de pel·lícula GIF:
+2. Pel·lícula GIF:
 
 ```bash
 pixi run python src/movie.py puzzles/sample3.json puzzles/sample3.sol.json img/sample3.gif
 ```
 
-### Pas 4 - eval.py {#pas-4---evalpy}
+### Pas 4 - eval.py
 
 Quart script implementat. Assigna **interès** entre **0 i 5 estrelles** (`stars`) a partir del graf d'estats. Alimenta `rate.py` i filtra candidats de `generate.py`.
 
@@ -294,7 +198,7 @@ pixi run python src/eval.py puzzles/<id>.json --json
 pixi run python src/eval.py puzzles/<id>.json --json --with-betweenness   # opcional
 ```
 
-### Pas 5 - rate.py {#pas-5---ratepy}
+### Pas 5 - rate.py 
 
 Cinquè script implementat. Envia una valoració (estrelles) d'un puzzle al repositori via API.
 
@@ -308,14 +212,11 @@ L'ID del puzzle és el nom del fitxer sense extensió. Si el fitxer ve de `downl
 Comandes:
 
 ```bash
-# Enviar vot (requereix token UPC)
+# Enviar vot
 pixi run python src/rate.py puzzles/<id>.json --token <TOKEN>
-
-# Provar sense enviar
-pixi run python src/rate.py puzzles/<id>.json --token <TOKEN> --dry-run
 ```
 
-### Pas 6 - generate.py {#pas-6---generatepy}
+### Pas 6 - generate.py
 
 Genera puzzles aleatoris i en retorna un que supera `min-stars` segons la mateixa heurística que `eval.py`.
 
@@ -331,12 +232,37 @@ pixi run python src/generate.py --candidates 20 --min-stars 2.0 --out puzzles/no
 pixi run python src/generate.py --width 4 --height 5 --pieces 8 --seed 42
 ```
 
-## Investigació 1: algorismes de `graph-tool` per a `eval.py` {#investigació-1-algorismes-de-graph-tool-per-a-evalpy}
+### Pas 7 - rate_all.py 
 
-Durant el desenvolupament vam revisar el catàleg de `graph-tool` (centralitats, components, camins mínims, clustering). A `eval.py` en fem servir només aquestes funcions:
+Setè script implementat. Descarrega tots els puzzles del repositori, els avalua amb `eval.py` i envia totes les valoracions en una sola execució.
 
-| Funció | Paper a la puntuació |
-|--------|----------------------|
+Funcionalitat principal:
+1. Obté la llista d'IDs del repositori (`GET /api/puzzles`).
+2. Per cada ID, usa el `.json` local si existeix; si no, el descarrega automàticament.
+3. Construeix el `.graphml` si no existeix i calcula les estrelles amb `eval.py`.
+4. Envia la valoració via `POST /api/puzzles/<id>/votes`.
+
+Útil per mantenir el rànking actualitzat quan es millora la fórmula de puntuació: una sola crida sobreescriu totes les valoracions anteriors amb els nous valors.
+
+Aquest script supera els minuts d'execució. Això és degut a que molts puzzles del top tenen grafs molt grans.
+
+```bash
+# Valorar tots els puzzles del repositori
+pixi run python src/rate_all.py --token <TOKEN>
+
+# Provar sense enviar (mostra les puntuacions calculades)
+pixi run python src/rate_all.py --token <TOKEN> --dry-run
+
+# Limitar a N puzzles
+pixi run python src/rate_all.py --token <TOKEN> --limit 10
+```
+
+## Investigació: justificació de la fórmula d'`eval.py`
+
+Durant el desenvolupament vam revisar el catàleg de `graph-tool` (centralitats, components, camins mínims, clustering) i vam verificar visualment cada mètrica amb `3D_view.py` i `play.py`. A `eval.py` en fem servir només les funcions que van mostrar correlació clara amb la dificultat percebuda:
+
+| Funció de `graph-tool` | Paper a la puntuació |
+|------------------------|----------------------|
 | `shortest_distance` | `min_solution_len`, `solvable`, `path_density` (termes L, P) |
 | `betweenness` | `max_vertex_betweenness` (terme K); arestes només amb `--with-betweenness` |
 | `global_clustering` | Terme C |
@@ -344,9 +270,7 @@ Durant el desenvolupament vam revisar el catàleg de `graph-tool` (centralitats,
 
 Altres funcions (`shortest_path`, `pagerank`, …) les vam considerar però no entren a la fórmula: `solve.py` ja resol el camí mínim i les centralitats alternatives no aportaven criteri clar davant la visualització 3D.
 
-## Investigació 2: visualitzar grafs i justificar la fórmula {#investigació-2-visualitzar-grafs-i-justificar-la-fórmula}
-
-Metodologia: `3D_view.py` (camí mínim en groc amb `.sol.json`) + prova manual amb `play.py`; contrastar amb `stars` de `eval.py`.
+Verificació visual sobre puzzles de referència:
 
 | Puzzle | Sol. mínima | Observació visual | Efecte a `eval.py` |
 |--------|-------------|-------------------|---------------------|
@@ -366,20 +290,3 @@ Metodologia: `3D_view.py` (camí mínim en groc amb `.sol.json`) + prova manual 
 pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
 pixi run python src/play.py puzzles/sample3.json
 ```
-
-## Eines de suport
-
-`play.py`, `image.py`, `movie.py`, `3D_view.py` — validació manual; fora del pipeline API.
-
-## Estat del projecte i pendents {#estat-del-projecte-i-pendents}
-
-| Eina | Estat |
-|------|--------|
-| `download.py`, `graph.py`, `solve.py`, `eval.py`, `rate.py`, `generate.py` | Implementats |
-| `upload.py` | Pendent |
-| `rate_all.py` | Opcional |
-
-**Flux col·laboratiu**: `download` → `eval --json` → `rate --token`.
-
-**Entrega**: ZIP sense `.pixi` (~1.3 GB).
-
