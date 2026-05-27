@@ -60,7 +60,7 @@ def key_to_state(key: StateKey) -> State:
     return State(key)
 
 
-def build_graph(puzzle: Puzzle) -> Any:
+def build_graph(puzzle: Puzzle, max_nodes: int | None = None) -> Any:
     """
 Construeix el graf d'estats accessibles des de `puzzle.start` amb BFS.
 
@@ -69,6 +69,8 @@ El graf inclou metadades:
 - `g.vp["state"]`: estat serialitzat en JSON
 - `g.vp["is_start"]`: node inicial
 - `g.vp["is_goal"]`: node objectiu
+
+Si max_nodes és not None, el BFS s'atura quan s'assoleix aquest nombre de nodes.
 """
     gt = importlib.import_module("graph_tool.all")
     g = gt.Graph(directed=False)
@@ -95,6 +97,8 @@ El graf inclou metadades:
     queue: deque[StateKey] = deque([start_key])
 
     while queue:
+        if max_nodes is not None and len(key_to_vertex) >= max_nodes:
+            break
         current_key = queue.popleft()
         current_state = key_to_state(current_key)
         current_v = key_to_vertex[current_key]

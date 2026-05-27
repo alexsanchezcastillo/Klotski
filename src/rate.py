@@ -86,7 +86,8 @@ def compute_stars(puzzle_path: Path, graphml_path: str | None) -> float:
 
 def post_vote(puzzle_id: str, stars: float, token: str, dry_run: bool) -> None:
     url = f"{API_BASE}/api/puzzles/{puzzle_id}/votes"
-    payload = json.dumps({"stars": stars}).encode()
+    stars_int = max(0, min(5, round(stars)))
+    payload = json.dumps({"stars": stars_int}).encode()
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}",
@@ -94,7 +95,7 @@ def post_vote(puzzle_id: str, stars: float, token: str, dry_run: bool) -> None:
 
     if dry_run:
         print(f"[dry-run] POST {url}")
-        print(f"[dry-run] Body: {{\"stars\": {stars}}}")
+        print(f"[dry-run] Body: {{\"stars\": {stars_int}}} (arrodonit de {stars:.2f})")
         return
 
     req = urllib.request.Request(url, data=payload, headers=headers, method="POST")

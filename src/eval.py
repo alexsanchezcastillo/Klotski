@@ -123,8 +123,6 @@ def compute_metrics(g: Any, with_betweenness: bool = False) -> dict[str, Any]:
             max_e_btw = max(float(e_btw[e]) for e in g.edges())
         else:
             max_e_btw = None
-    else:
-        max_e_btw = None
 
     metrics: dict[str, Any] = {
         "nodes": n,

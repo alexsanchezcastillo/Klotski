@@ -70,7 +70,7 @@ def load_canonical_puzzle(path: Path) -> tuple[Puzzle, dict[str, Any]]:
 
 def post_puzzle(puzzle_obj: dict[str, Any], token: str, dry_run: bool) -> None:
     url = f"{API_BASE}{UPLOAD_ROUTE}"
-    body = json.dumps({"puzzle": puzzle_obj}).encode("utf-8")
+    body = json.dumps(puzzle_obj).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {token}",
@@ -79,7 +79,7 @@ def post_puzzle(puzzle_obj: dict[str, Any], token: str, dry_run: bool) -> None:
     if dry_run:
         print(f"[dry-run] POST {url}")
         print(f"[dry-run] Authorization: Bearer ***")
-        print(f"[dry-run] Body: {{\"puzzle\": ...}} ({len(body)} bytes)")
+        print(f"[dry-run] Body: puzzle JSON ({len(body)} bytes)")
         return
 
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")

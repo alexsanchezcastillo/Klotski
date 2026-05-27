@@ -218,21 +218,52 @@ pixi run python src/rate.py puzzles/<id>.json --token <TOKEN>
 
 ### Pas 6 - generate.py
 
-Genera puzzles aleatoris i en retorna un que supera `min-stars` segons la mateixa heurística que `eval.py`.
+Genera puzzles aleatoris de qualitat usant un pipeline en dues fases per garantir eficiència i evitar penjades.
 
 Flux:
 
-1. Genera `candidates` puzzles aleatoris (peces, parets, objectius).
-2. Filtra ràpidament insolubles (BFS limitat).
-3. Construeix el graf complet dels supervivents i avalua amb `eval.py`.
-4. Desa el millor a `--out` (per defecte `puzzles/generated_<hash>.json`).
+1. Omple el taulell fins a ≥80% de cobertura → goal state dens (branching baix, solucions llargues).
+2. BFS multi-font des del goal (màx. 30.000 nodes) → tria l'start en el top 20% de profunditat.
+3. **Fase ràpida** (tots els candidats): BFS pur sense `graph-tool` → mètriques bàsiques + `fast_score`.
+4. **Fase completa** (només el guanyador): `build_graph` (màx. 15.000 nodes) + `eval.py` per a la puntuació final.
+
+La separació garanteix que la generació no es pengi mai, independentment de la mida de l'espai d'estats.
 
 ```bash
-pixi run python src/generate.py --candidates 20 --min-stars 2.0 --out puzzles/nou.json
-pixi run python src/generate.py --width 4 --height 5 --pieces 8 --seed 42
+# Valors per defecte: 4×5, ≤12 peces, ≥80% cobertura
+pixi run python src/generate.py --candidates 15 --min-stars 1.5 --out puzzles/nou.json
+
+# Seed fixa per reproduir resultats
+pixi run python src/generate.py --candidates 20 --seed 42
+
+# Taulell més gran per a puzzles més difícils (solucions més llargues)
+pixi run python src/generate.py --width 5 --height 5 --pieces 14 --min-stars 2.5
 ```
 
-### Pas 7 - rate_all.py 
+### Pas 7 - upload.py
+
+Puja un puzzle generat al repositori col·laboratiu.
+
+Funcionalitat principal:
+1. Llegeix i valida el `.json` del puzzle (format canònic).
+2. Calcula l'ID que li assignarà el servidor (SHA-256 del JSON compacte).
+3. Fa `POST /api/puzzles` amb el puzzle i el token d'autenticació.
+
+```bash
+# Pujar un puzzle
+pixi run python src/upload.py puzzles/generated_abc.json --token <TOKEN>
+
+# Provar sense enviar
+pixi run python src/upload.py puzzles/generated_abc.json --token <TOKEN> --dry-run
+
+# Pujar i verificar que s'ha rebut correctament
+pixi run python src/upload.py puzzles/generated_abc.json --token <TOKEN> --verify
+```
+
+Flux recomanat: `generate.py` → `eval.py` (comprovar qualitat) → `upload.py` → `rate.py` (enviar valoració).
+
+
+### Pas 8 - rate_all.py 
 
 Setè script implementat. Descarrega tots els puzzles del repositori, els avalua amb `eval.py` i envia totes les valoracions en una sola execució.
 
