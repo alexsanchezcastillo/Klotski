@@ -242,7 +242,9 @@ Funcionalitat principal:
 
 #### Criteri d'«interès»
 
-Combinació **subjectiva però explícita** de: solució llarga (L), camí no trivial respecte la mida del graf (P), colls d'ampolla en estats (K), ramificació moderada (R), espai d'estats gran (S), lleu clustering (C), i penalitzacions per dead-ends (D) i puzzles massa petits o curts (T). Justificació visual: [Investigació 2](#investigació-2-visualitzar-grafs-i-justificar-la-fórmula). Si `solvable` és fals → **stars = 0**.
+Combinació **subjectiva però explícita** de: densitat del camí (P), colls d'ampolla (K) i ramificació (R) com a factors principals; longitud de solució (L), mida del graf (S) i clustering (C) com a factors secundaris; penalitzacions per dead-ends (D) i puzzles massa petits o curts (T). Justificació visual: [Investigació 2](#investigació-2-visualitzar-grafs-i-justificar-la-fórmula). Si `solvable` és fals → **stars = 0**.
+
+Constants internes: `MIN_SOLUTION_SOFT = 3`, `MIN_NODES_SOFT = 12`, `OPTIMAL_AVG_DEGREE = 2.8`, `BETWEENNESS_NORM_FACTOR = 0.04`.
 
 #### Mètriques del graf (`compute_metrics`)
 
@@ -265,19 +267,19 @@ Tots els termes es limiten amb `clamp01(x) = min(1, max(0, x))`:
 
 | Terme | Pes | Fórmula | Interpretació |
 |-------|-----|---------|---------------|
-| **L** | +35 % | `clamp(min_len/80) * clamp(min_len/10)` | Solució llarga; penalitza menys de 10 moviments |
-| **P** | +15 % | `clamp(path_density/8)` | El camí solució «ocupa» bé l'espai explorat |
-| **K** | +15 % | `clamp(max_vertex_betweenness / (0.15*n))` | Coll d'ampolla clar (fases, ponts estrets) |
-| **R** | +15 % | `clamp(1 - abs(avg_degree-2.8)/2.8)` | Ramificació al volt de 2.8 |
-| **S** | +15 % | `clamp(log10(n+1)/5) * clamp(n/50)` | Graf gran; mínim ~50 nodes |
-| **C** | +5 % | `clamp(global_clustering/0.25)` | Densitat local (secundari) |
-| **D** | −15 % | `clamp(dead_end_ratio/0.60)` | Massa estats «passadís» |
-| **T** | −10 % | `clamp(0.5*t_len + 0.5*t_size)` | Puzzle massa petit o fàcil (`t_len` si `min_len < 10`, `t_size` si `nodes < 50`) |
+| **L** | +5 % | `clamp(min_len/12) * clamp(min_len/3)` | Longitud de solució (pes baix) |
+| **P** | +25 % | `clamp(path_density/1.7)` | El camí solució «ocupa» bé l'espai explorat |
+| **K** | +25 % | `clamp(max_vertex_betweenness / max(1, 0.04*n))` | Coll d'ampolla clar (fases, ponts estrets) |
+| **R** | +25 % | `clamp(1 - abs(avg_degree-2.8)/7.0)` | Ramificació al volt de 2.8 |
+| **S** | +15 % | `clamp(log10(n+1)/1.0) * clamp(n/12)` | Mida del graf |
+| **C** | +5 % | `clamp(global_clustering/0.06)` | Densitat local (secundari) |
+| **D** | −10 % | `clamp(dead_end_ratio/2.50)` | Massa estats «passadís» |
+| **T** | −5 % | `clamp(0.5*t_len + 0.5*t_size)` | Puzzle massa petit o fàcil (`t_len` si `min_len < 3`, `t_size` si `nodes < 12`) |
 
 Combinació final:
 
 ```text
-raw = 0.35*L + 0.15*P + 0.15*K + 0.15*R + 0.15*S + 0.05*C - 0.15*D - 0.10*T
+raw = 0.05*L + 0.25*P + 0.25*K + 0.25*R + 0.15*S + 0.05*C - 0.10*D - 0.05*T
 raw = clamp(raw)
 stars = 5 * raw
 ```
