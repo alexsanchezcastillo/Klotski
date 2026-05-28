@@ -178,8 +178,8 @@ def compute_score_terms(metrics: dict[str, Any]) -> dict[str, float]:
     max_v_btw = float(metrics.get("max_vertex_betweenness", 0.0))
 
     log_nodes = math.log10(n + 1)
-    len_term = clamp01(min_len / 80.0) * clamp01(min_len / MIN_SOLUTION_SOFT)
-    size_term = clamp01(log_nodes / 5.0) * clamp01(n / MIN_NODES_SOFT)
+    len_term = clamp01(min_len / 75.0) * clamp01(min_len / MIN_SOLUTION_SOFT)
+    size_term = clamp01(log_nodes / 3.0) * clamp01(n / MIN_NODES_SOFT)
 
     path_density_term = clamp01(path_density / 8.0)
 
@@ -196,14 +196,14 @@ def compute_score_terms(metrics: dict[str, Any]) -> dict[str, float]:
     trivial_penalty = clamp01(0.5 * t_len + 0.5 * t_size)
 
     raw = (
-        0.35 * len_term
-        + 0.15 * path_density_term
-        + 0.15 * bottleneck_term
-        + 0.15 * branch_term
+        0.05 * len_term
+        + 0.25 * path_density_term
+        + 0.25 * bottleneck_term
+        + 0.25 * branch_term
         + 0.15 * size_term
         + 0.05 * clustering_term
-        - 0.15 * dead_end_penalty
-        - 0.10 * trivial_penalty
+        - 0.10 * dead_end_penalty
+        - 0.05 * trivial_penalty
     )
 
     return {
