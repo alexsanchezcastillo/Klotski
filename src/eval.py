@@ -57,10 +57,10 @@ def parse_args() -> argparse.Namespace:
 
 
 # Llindars de la heurística de puntuació (veure score_from_metrics).
-MIN_SOLUTION_SOFT = 10
-MIN_NODES_SOFT = 50
+MIN_SOLUTION_SOFT = 8
+MIN_NODES_SOFT = 35
 OPTIMAL_AVG_DEGREE = 2.8
-BETWEENNESS_NORM_FACTOR = 0.15
+BETWEENNESS_NORM_FACTOR = 0.10
 
 
 def _goal_distances(dist_map: Any, goal_vertices: list[Any], n: int) -> list[int]:
@@ -178,18 +178,18 @@ def compute_score_terms(metrics: dict[str, Any]) -> dict[str, float]:
     max_v_btw = float(metrics.get("max_vertex_betweenness", 0.0))
 
     log_nodes = math.log10(n + 1)
-    len_term = clamp01(min_len / 75.0) * clamp01(min_len / MIN_SOLUTION_SOFT)
-    size_term = clamp01(log_nodes / 3.0) * clamp01(n / MIN_NODES_SOFT)
+    len_term = clamp01(min_len / 40.0) * clamp01(min_len / MIN_SOLUTION_SOFT)
+    size_term = clamp01(log_nodes / 2.4) * clamp01(n / MIN_NODES_SOFT)
 
-    path_density_term = clamp01(path_density / 8.0)
+    path_density_term = clamp01(path_density / 4.5)
 
     btw_denom = max(1.0, n * BETWEENNESS_NORM_FACTOR)
     bottleneck_term = clamp01(max_v_btw / btw_denom)
 
-    branch_term = clamp01(1.0 - abs(avg_degree - OPTIMAL_AVG_DEGREE) / OPTIMAL_AVG_DEGREE)
+    branch_term = clamp01(1.0 - abs(avg_degree - OPTIMAL_AVG_DEGREE) / 4.0)
 
-    clustering_term = clamp01(clustering / 0.25)
-    dead_end_penalty = clamp01(dead_end_ratio / 0.60)
+    clustering_term = clamp01(clustering / 0.18)
+    dead_end_penalty = clamp01(dead_end_ratio / 0.90)
 
     t_len = 0.0 if min_len >= MIN_SOLUTION_SOFT else (MIN_SOLUTION_SOFT - min_len) / MIN_SOLUTION_SOFT
     t_size = 0.0 if n >= MIN_NODES_SOFT else (MIN_NODES_SOFT - n) / MIN_NODES_SOFT
