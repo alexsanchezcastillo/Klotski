@@ -231,7 +231,7 @@ La separació garanteix que la generació no es pengi mai, independentment de la
 
 ```bash
 # Valors per defecte: 4×5, ≤12 peces, ≥80% cobertura
-pixi run python src/generate.py --candidates 15 --min-stars 1.5 --out puzzles/nou.json
+pixi run python src/generate.py --candidates 30 --min-stars 2.5 --out puzzles/nou.json
 
 # Seed fixa per reproduir resultats
 pixi run python src/generate.py --candidates 20 --seed 42
