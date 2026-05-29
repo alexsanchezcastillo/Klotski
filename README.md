@@ -10,7 +10,11 @@ Resolució de puzzles de peces lliscants modelant l'**espai d'estats** com a gra
 - Definir i justificar una heurística d'interès (0–5 estrelles) a partir de mètriques de `graph-tool`.
 - Interactuar amb l'API: descarregar puzzles, enviar valoracions (`rate.py`), pujar puzzles nous (`upload.py`); generar candidats (`generate.py`).
 
-## Estructura del codi
+## Estructura del projecte
+
+El nostre projecte està composat pel README, els documents de la capreta source, els puzzles de la carpeta puzzles i els gifs de la carpeta img.
+
+L'estructura del codi és la següent:
 
 - [src/puzzle.py](src/puzzle.py), [src/logic.py](src/logic.py): model i moviments.
 - [src/graph.py](src/graph.py): graf d'estats.
@@ -22,6 +26,12 @@ Resolució de puzzles de peces lliscants modelant l'**espai d'estats** com a gra
 - [src/upload.py](src/upload.py): penjar puzzles al web.
 - [src/rate_all.py](src/rate_all.py): valorar diversos puzzles de l'API (tots).
 
+També hi ha 3 puzzles generats pel nostre codi de nivell progressiu (el primer és el més fàcil). A més, a la carpeta img estan els 3 respectius gifs solucionant els puzzles. A continuació estan les comandes per visualitzar el graf associat i jugar els puzzles. 
+
+```bash
+pixi run python src/3D_view.py puzzles/puzzle1.graphml puzzles/puzzle1.sol.json
+pixi run python src/play.py puzzles/puzzle1.json
+```
 
 ## Desenvolupament cronològic
 
@@ -79,22 +89,20 @@ Comandes:
 
 ```bash
 # Crear el graf amb nom de sortida per defecte
-pixi run python src/graph.py puzzles/sample3.json
+pixi run python src/graph.py puzzles/puzzle1.json
 
 # Crear el graf amb nom de sortida explícit
-pixi run python src/graph.py puzzles/sample3.json puzzles/sample3.graphml
+pixi run python src/graph.py puzzles/puzzle1.json puzzles/puzzle1.graphml
 ```
 
-Nota de visualització:
-- Obrir directament un `.graphml` al navegador mostra XML (text), no una imatge.
-- Per veure el graf en 3D, cal executar el visor `3D_view.py`.
+Nota de visualització: Obrir directament un `.graphml` al navegador mostra XML (text), no una imatge. Per veure el graf en 3D, cal executar el visor `3D_view.py`.
 
 ```bash
 # Veure el graf sense camí de solució
-pixi run python src/3D_view.py puzzles/sample3.graphml
+pixi run python src/3D_view.py puzzles/puzzle1.graphml
 
 # Veure el graf amb el camí de solució ressaltat (groc)
-pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
+pixi run python src/3D_view.py puzzles/puzzle1.graphml puzzles/puzzle1.sol.json
 ```
 
 ### Pas 3 - solve.py
@@ -111,26 +119,26 @@ Comandes:
 
 ```bash
 # Mode mínim: puzzle -> usa <puzzle>.graphml i desa <puzzle>.sol.json
-pixi run python src/solve.py puzzles/sample3.json
+pixi run python src/solve.py puzzles/puzzle1.json
 
 # Indicant fitxer de graf explícit
-pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml
+pixi run python src/solve.py puzzles/puzzle1.json puzzles/puzzle1.graphml
 
 # Indicant graf i nom de sortida de la solució
-pixi run python src/solve.py puzzles/sample3.json puzzles/sample3.graphml puzzles/sample3.sol.json
+pixi run python src/solve.py puzzles/puzzle1.json puzzles/puzzle1.graphml puzzles/puzzle1.sol.json
 ```
 
 Què es pot fer després de generar solució:
 1. Visualització 3D del camí:
 
 ```bash
-pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
+pixi run python src/3D_view.py puzzles/puzzle1.graphml puzzles/puzzle1.sol.json
 ```
 
 2. Pel·lícula GIF:
 
 ```bash
-pixi run python src/movie.py puzzles/sample3.json puzzles/sample3.sol.json img/sample3.gif
+pixi run python src/movie.py puzzles/puzzle1.json puzzles/puzzle1.sol.json img/puzzle1.gif
 ```
 
 ### Pas 4 - eval.py
@@ -193,7 +201,7 @@ Sortida `--json`: mètriques, `score_terms`, `stars`. El flag `--with-betweennes
 Comandes:
 
 ```bash
-pixi run python src/eval.py puzzles/sample3.json
+pixi run python src/eval.py puzzles/puzzle1.json
 pixi run python src/eval.py puzzles/<id>.json --json
 pixi run python src/eval.py puzzles/<id>.json --json --with-betweenness   # opcional
 ```
@@ -231,7 +239,7 @@ La separació garanteix que la generació no es pengi mai, independentment de la
 
 ```bash
 # Valors per defecte: 4×5, ≤12 peces, ≥80% cobertura
-pixi run python src/generate.py --candidates 30 --min-stars 2.5 --out puzzles/nou.json
+pixi run python src/generate.py --candidates 30 --min-stars 3 --out puzzles/nou.json
 
 # Seed fixa per reproduir resultats
 pixi run python src/generate.py --candidates 20 --seed 42
@@ -275,7 +283,7 @@ Funcionalitat principal:
 
 Útil per mantenir el rànking actualitzat quan es millora la fórmula de puntuació: una sola crida sobreescriu totes les valoracions anteriors amb els nous valors.
 
-Aquest script supera els minuts d'execució. Això és degut a que molts puzzles del top tenen grafs molt grans.
+Aquest script supera els minuts d'execució. Això és degut a que molts puzzles del top tenen grafs molt grans pels quals és impossible fer el BFS en un temps raoanable.
 
 ```bash
 # Valorar tots els puzzles del repositori
@@ -288,7 +296,7 @@ pixi run python src/rate_all.py --token <TOKEN> --dry-run
 pixi run python src/rate_all.py --token <TOKEN> --limit 10
 ```
 
-## Investigació: justificació de la fórmula d'`eval.py`
+## Annex: justificació de la fórmula d'`eval.py`
 
 Durant el desenvolupament vam revisar el catàleg de `graph-tool` (centralitats, components, camins mínims, clustering) i vam verificar visualment cada mètrica amb `3D_view.py` i `play.py`. A `eval.py` en fem servir només les funcions que van mostrar correlació clara amb la dificultat percebuda:
 
@@ -303,10 +311,12 @@ Altres funcions (`shortest_path`, `pagerank`, …) les vam considerar però no e
 
 Verificació visual sobre puzzles de referència:
 
+> Nota: `2swap` i `simplicity` són els puzzles d'exemple que s'ens van proporcionar per a que féssim proves. No s'inclouen a l'entrega però els citem aquí perquè il·lustren bé el comportament dels diferents termes de la fórmula.
+
 | Puzzle | Sol. mínima | Observació visual | Efecte a `eval.py` |
 |--------|-------------|-------------------|---------------------|
 | `2swap` | 17 | Graf compacte, poc ramificat | P, R i S moderats |
-| `sample3` | 29 | Camí llarg, reorganització intermèdia | P, K i R elevats |
+| `puzzle1` | 29 | Camí llarg, reorganització intermèdia | P, K i R elevats |
 | `simplicity` | 31 | Fases abans d'arribar a l'objectiu | P i K elevats si hi ha «pont» central |
 
 | El que es veu al 3D | Terme / mètrica |
@@ -316,14 +326,3 @@ Verificació visual sobre puzzles de referència:
 | Molts nodes | S |
 | Graf lineal, passadissos | D ↑, C ↓ |
 | Puzzle petit o solució curta | T ↑, L ↓ |
-
-```bash
-pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
-pixi run python src/play.py puzzles/sample3.json
-```
-
-## Entrega
-
-Incloure a la carpeta del projecte almenys un puzzle generat amb `generate.py` (per defecte `puzzles/generated_<hash>.json`).
-
-Comprimir tot el projecte en un **fitxer ZIP** per al Racó. **No incloure la carpeta `.pixi`** (ocupa ~1,3 GB i supera el límit d'entrega).
