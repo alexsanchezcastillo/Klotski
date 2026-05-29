@@ -8,7 +8,7 @@ Resolució de puzzles de peces lliscants modelant l'**espai d'estats** com a gra
 - Construir el graf d'estats d'un puzzle Klotski.
 - Trobar una solució mínima com a seqüència de moviments.
 - Definir i justificar una heurística d'interès (0–5 estrelles) a partir de mètriques de `graph-tool`.
-- Interactuar amb l'API: descarregar puzzles, enviar valoracions (`rate.py`); generar candidats (`generate.py`).
+- Interactuar amb l'API: descarregar puzzles, enviar valoracions (`rate.py`), pujar puzzles nous (`upload.py`); generar candidats (`generate.py`).
 
 ## Estructura del codi
 
@@ -20,7 +20,7 @@ Resolució de puzzles de peces lliscants modelant l'**espai d'estats** com a gra
 - [src/download.py](src/download.py): descàrrega des del repositori.
 - [src/generate.py](src/generate.py): generació aleatòria filtrada per `eval.py`.
 - [src/upload.py](src/upload.py): penjar puzzles al web.
-- [src/rateall.py](src/rateall.py): valorar diversos puzzles de l'API (tots).
+- [src/rate_all.py](src/rate_all.py): valorar diversos puzzles de l'API (tots).
 
 
 ## Desenvolupament cronològic
@@ -139,14 +139,14 @@ Quart script implementat. Assigna **interès** entre **0 i 5 estrelles** (`stars
 
 Funcionalitat principal:
 
-1. Carrega puzzle + `.graphml` (o el genera; vegeu [convenció](#guia-rapida-corrector)).
-2. `compute_metrics` — mètriques amb `graph-tool` ([Investigació 1](#investigació-1-algorismes-de-graph-tool-per-a-evalpy)).
+1. Carrega puzzle + `.graphml` (o el genera si no existeix; convenció: `foo.json` → `foo.graphml` al mateix directori).
+2. `compute_metrics` — mètriques amb `graph-tool` (vegeu la secció Investigació més avall).
 3. `compute_score_terms` — termes normalitzats L, P, K, R, S, C, D, T ∈ [0, 1].
 4. `score_from_metrics` — combinació ponderada → `stars`.
 
 #### Criteri d'«interès»
 
-Combinació **subjectiva però explícita** de: densitat del camí (P), colls d'ampolla (K) i ramificació (R) com a factors principals; longitud de solució (L), mida del graf (S) i clustering (C) com a factors secundaris; penalitzacions per dead-ends (D) i puzzles massa petits o curts (T). Justificació visual: [Investigació 2](#investigació-2-visualitzar-grafs-i-justificar-la-fórmula). Si `solvable` és fals → **stars = 0**.
+Combinació **subjectiva però explícita** de: densitat del camí (P), colls d'ampolla (K) i ramificació (R) com a factors principals; longitud de solució (L), mida del graf (S) i clustering (C) com a factors secundaris; penalitzacions per dead-ends (D) i puzzles massa petits o curts (T). Justificació visual: vegeu la secció Investigació més avall. Si `solvable` és fals → **stars = 0**.
 
 Constants internes: `MIN_SOLUTION_SOFT = 3`, `MIN_NODES_SOFT = 12`, `OPTIMAL_AVG_DEGREE = 2.8`, `BETWEENNESS_NORM_FACTOR = 0.04`.
 
@@ -305,13 +305,13 @@ Verificació visual sobre puzzles de referència:
 
 | Puzzle | Sol. mínima | Observació visual | Efecte a `eval.py` |
 |--------|-------------|-------------------|---------------------|
-| `2swap` | 17 | Graf compacte, poc ramificat | L i S moderats |
-| `sample3` | 29 | Camí llarg, reorganització intermèdia | L i P elevats |
-| `simplicity` | 31 | Fases abans d'arribar a l'objectiu | L alt; K si hi ha «pont» central |
+| `2swap` | 17 | Graf compacte, poc ramificat | P, R i S moderats |
+| `sample3` | 29 | Camí llarg, reorganització intermèdia | P, K i R elevats |
+| `simplicity` | 31 | Fases abans d'arribar a l'objectiu | P i K elevats si hi ha «pont» central |
 
 | El que es veu al 3D | Terme / mètrica |
 |--------------------|-----------------|
-| Camí llarg en groc | L, P |
+| Camí llarg en groc | P (principal), L secundari |
 | «Pont» estret (estat obligatori) | K (`max_vertex_betweenness`) |
 | Molts nodes | S |
 | Graf lineal, passadissos | D ↑, C ↓ |
@@ -321,3 +321,9 @@ Verificació visual sobre puzzles de referència:
 pixi run python src/3D_view.py puzzles/sample3.graphml puzzles/sample3.sol.json
 pixi run python src/play.py puzzles/sample3.json
 ```
+
+## Entrega
+
+Incloure a la carpeta del projecte almenys un puzzle generat amb `generate.py` (per defecte `puzzles/generated_<hash>.json`).
+
+Comprimir tot el projecte en un **fitxer ZIP** per al Racó. **No incloure la carpeta `.pixi`** (ocupa ~1,3 GB i supera el límit d'entrega).
